@@ -1,0 +1,11 @@
+# Environment
+.env
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# LLM debug logs
+llm_calls.jsonl

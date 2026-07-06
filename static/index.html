@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgenticVisualizer</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div id="app">
+    <header class="top-bar">
+      <button id="toggle-panel" class="icon-btn" title="Toggle teacher panel">☰</button>
+      <h1>AgenticVisualizer</h1>
+      <div class="topic-banner">
+        <span id="topic-display">Loading…</span>
+      </div>
+      <div class="spacer"></div>
+      <button id="start-round" class="action-btn">▶ Start Round</button>
+      <button id="stop-round" class="action-btn danger" disabled>⏹ Stop</button>
+      <div id="status-indicator" class="status idle">Idle</div>
+    </header>
+
+    <main class="main">
+      <aside id="teacher-panel" class="panel open">
+        <div class="panel-section">
+          <h2>Topic</h2>
+          <input type="text" id="topic-input" placeholder="What are they debating?">
+        </div>
+
+        <div class="panel-section">
+          <h2>Turn rules</h2>
+          <label>
+            Turn order
+            <select id="turn-order">
+              <option value="sequential">Sequential</option>
+              <option value="random">Random</option>
+              <option value="simultaneous_proposal">Simultaneous proposals</option>
+            </select>
+          </label>
+          <div class="row">
+            <label>
+              Max turns
+              <input type="number" id="max-turns" min="2" max="30" value="8">
+            </label>
+            <label>
+              Min turns
+              <input type="number" id="min-turns" min="1" max="10" value="2">
+            </label>
+          </div>
+          <label class="checkbox-label">
+            <input type="checkbox" id="auto-pause">
+            Auto-pause after each full round
+          </label>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-header">
+            <h2>Rules of engagement</h2>
+            <button id="add-rule" class="small-btn">+ Add rule</button>
+          </div>
+          <div id="rules-list"></div>
+          <p class="hint">Hard constraints are non-negotiable; guidelines are strongly preferred norms.</p>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-header">
+            <h2>Agents</h2>
+            <button id="add-agent" class="small-btn">+ Add</button>
+          </div>
+          <div id="agents-list"></div>
+        </div>
+
+        <div class="panel-section">
+          <button id="reset-round" class="small-btn">Reset round history</button>
+        </div>
+
+        <div class="panel-section log-section">
+          <h2>Live log</h2>
+          <div id="live-log"></div>
+        </div>
+      </aside>
+
+      <section id="room" class="room">
+        <div id="avatars-container" class="avatars-container"></div>
+
+        <div id="transcript-modal" class="modal hidden">
+          <div class="modal-content">
+            <button class="modal-close" id="close-transcript">&times;</button>
+            <h2 id="transcript-title">Transcript</h2>
+            <div id="transcript-body"></div>
+          </div>
+        </div>
+
+        <div id="outcome-card" class="outcome-card hidden">
+          <div id="outcome-badge" class="outcome-badge">Outcome</div>
+          <h2 id="outcome-title"></h2>
+          <div id="outcome-proposal" class="proposal-box"></div>
+          <div id="outcome-details" class="details-box"></div>
+          <p id="outcome-summary"></p>
+          <button id="close-outcome" class="small-btn">Close</button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
