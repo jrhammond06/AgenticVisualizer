@@ -16,6 +16,7 @@
       </div>
       <div class="spacer"></div>
       <button id="start-round" class="action-btn">▶ Start Round</button>
+      <button id="next-step" class="action-btn" disabled>⏭ Next</button>
       <button id="stop-round" class="action-btn danger" disabled>⏹ Stop</button>
       <div id="status-indicator" class="status idle">Idle</div>
     </header>
@@ -35,6 +36,13 @@
               <option value="sequential">Sequential</option>
               <option value="random">Random</option>
               <option value="simultaneous_proposal">Simultaneous proposals</option>
+            </select>
+          </label>
+          <label>
+            Mode
+            <select id="mode-select">
+              <option value="realtime">Real-time</option>
+              <option value="step_by_step">Step-by-step</option>
             </select>
           </label>
           <div class="row">

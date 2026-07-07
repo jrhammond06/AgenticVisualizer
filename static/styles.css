@@ -150,6 +150,12 @@ html, body {
   color: var(--primary);
 }
 
+.status.waiting {
+  background: #dbeafe;
+  color: #1e40af;
+  animation: pulse 1.5s infinite;
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
@@ -384,6 +390,22 @@ html, body {
   animation: fadeIn 0.2s;
 }
 
+.generating-bubble {
+  position: absolute;
+  top: -28px;
+  right: -14px;
+  background: #e0e7ff;
+  border: 2px solid var(--primary);
+  color: var(--primary);
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  animation: fadeIn 0.2s, pulse 1.2s infinite;
+  z-index: 6;
+}
+
 .speech-bubble {
   position: absolute;
   min-width: 240px;
@@ -439,6 +461,30 @@ html, body {
   top: 50%;
   transform: translateY(-50%);
   border-color: transparent transparent transparent var(--primary);
+}
+
+/* Referee speech bubble: distinct from agent bubbles */
+.speech-bubble.referee-speech-bubble {
+  background: #fef3c7;
+  border-color: #f59e0b;
+  font-weight: 600;
+  color: #78350f;
+}
+
+.speech-bubble.referee-speech-bubble.arrow-top::after {
+  border-color: transparent transparent #f59e0b transparent;
+}
+
+.speech-bubble.referee-speech-bubble.arrow-bottom::after {
+  border-color: #f59e0b transparent transparent transparent;
+}
+
+.speech-bubble.referee-speech-bubble.arrow-left::after {
+  border-color: transparent #f59e0b transparent transparent;
+}
+
+.speech-bubble.referee-speech-bubble.arrow-right::after {
+  border-color: transparent transparent transparent #f59e0b;
 }
 
 @keyframes popIn {
@@ -784,4 +830,26 @@ html, body {
   font-size: 0.8rem;
   color: var(--text-muted);
   margin: 8px 0 0 0;
+}
+
+/* Collapsible JSON details */
+.collapse-toggle {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 4px 10px;
+  background: #e0e7ff;
+  color: var(--primary);
+  border: none;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.collapse-toggle:hover {
+  background: #c7d2fe;
+}
+
+.collapse-content {
+  margin-top: 8px;
 }

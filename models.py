@@ -24,6 +24,7 @@ class RuleSet(BaseModel):
     min_turns: int = MIN_TURNS_DEFAULT
     turn_order: Literal["sequential", "random", "simultaneous_proposal"] = "sequential"
     auto_pause: bool = False
+    mode: Literal["realtime", "step_by_step"] = "realtime"
 
 
 class RuleOfEngagement(BaseModel):
@@ -53,6 +54,9 @@ class Session(BaseModel):
     turn: int = 0
     consensus_reached: bool = False
     last_evaluation: Optional[RefereeEvaluation] = None
+    # Step-by-step playback queue (not serialized to the frontend).
+    step_queue: List[dict] = Field(default_factory=list, exclude=True)
+    step_index: int = Field(default=0, exclude=True)
 
 
 class AgentUpdate(BaseModel):

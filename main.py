@@ -9,7 +9,7 @@ import asyncio
 import os
 
 from models import Agent, AgentUpdate, RuleOfEngagement, RuleSet, Session
-from orchestrator import run_round
+from orchestrator import run_round, advance_step
 import config
 
 
@@ -215,6 +215,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 if session.status == "running":
                     session.status = "idle"
                     await manager.broadcast({"type": "status", "state": "idle"})
+
+            elif msg_type == "next_step":
+                advance_step()
 
             elif msg_type == "update_session":
                 if session.status == "running":
