@@ -23,8 +23,7 @@ class RuleSet(BaseModel):
     max_turns: int = MAX_TURNS_DEFAULT
     min_turns: int = MIN_TURNS_DEFAULT
     turn_order: Literal["sequential", "random", "simultaneous_proposal"] = "sequential"
-    auto_pause: bool = False
-    mode: Literal["realtime", "step_by_step"] = "realtime"
+    mode: Literal["realtime", "auto_pause", "step_by_step"] = "realtime"
 
 
 class RuleOfEngagement(BaseModel):

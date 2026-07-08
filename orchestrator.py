@@ -121,10 +121,9 @@ async def _run_realtime(session: Session, actors: dict, referee: Referee, broadc
 
             # Auto-pause after interim referee checks so the teacher can review.
             # Don't pause if this is the last possible cycle; let the round finish.
-            if session.rules.auto_pause and session.turn < session.rules.max_turns:
+            if session.rules.mode == "auto_pause" and session.turn < session.rules.max_turns:
                 session.status = "paused"
                 await broadcast({"type": "status", "state": "paused"})
-                await broadcast({"type": "referee_popup"})
                 break
 
     # Final referee evaluation if the round ran to completion without consensus.
@@ -263,8 +262,6 @@ async def _play_queue(session: Session, events: list, broadcast):
 
         if event["type"] == "referee_evaluation_bubble":
             evaluation = event["evaluation"]
-            for warning in evaluation.get("warnings", []):
-                await broadcast({"type": "referee_warning", "content": warning})
             await broadcast({"type": "referee_evaluation", "evaluation": evaluation})
             if evaluation.get("consensus_reached"):
                 session.consensus_reached = True
@@ -380,28 +377,16 @@ def _referee_event(evaluation) -> dict:
 async def _broadcast_outcome(session: Session, actors: dict, evaluation, broadcast):
     if evaluation and evaluation.consensus_reached:
         outcome = evaluation.consensus_proposal or "Consensus reached"
-        summary = evaluation.status_summary
-        await broadcast({
-            "type": "round_over",
-            "outcome": outcome,
-            "summary": summary,
-            "consensus_proposal": evaluation.consensus_proposal,
-            "proposal_details": evaluation.proposal_details,
-            "consensus_reached": True,
-            "history": [m.model_dump() for m in session.history],
-        })
     else:
-        # No consensus: report where things stand
-        summary = evaluation.status_summary if evaluation else "The group did not reach a consensus."
-        await broadcast({
-            "type": "round_over",
-            "outcome": "No consensus yet",
-            "summary": summary,
-            "consensus_proposal": evaluation.consensus_proposal if evaluation else "",
-            "proposal_details": evaluation.proposal_details if evaluation else {},
-            "consensus_reached": False,
-            "history": [m.model_dump() for m in session.history],
-        })
+        outcome = "No consensus yet"
+
+    await broadcast({
+        "type": "round_over",
+        "outcome": outcome,
+        "evaluation": evaluation.model_dump() if evaluation else None,
+        "consensus_reached": bool(evaluation and evaluation.consensus_reached),
+        "history": [m.model_dump() for m in session.history],
+    })
 
 
 async def _legacy_summarize(session: Session, actors: dict) -> tuple:

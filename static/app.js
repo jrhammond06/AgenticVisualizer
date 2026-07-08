@@ -27,7 +27,6 @@ const els = {
   turnOrder: document.getElementById("turn-order"),
   maxTurns: document.getElementById("max-turns"),
   minTurns: document.getElementById("min-turns"),
-  autoPause: document.getElementById("auto-pause"),
   modeSelect: document.getElementById("mode-select"),
   rulesList: document.getElementById("rules-list"),
   addRule: document.getElementById("add-rule"),
@@ -122,16 +121,11 @@ function handleMessage(msg) {
       break;
     case "referee_evaluation_bubble":
       if (state.stepMode) {
-        showRefereeSpeech(msg.content);
-        if (msg.evaluation && msg.evaluation.warnings) {
-          msg.evaluation.warnings.forEach((warning) => showRefereeWarning(warning));
-        }
+        showRefereeMessage(msg.content, msg.evaluation);
       } else {
-        enqueueSpeech("referee", msg.content, { warnings: msg.evaluation?.warnings });
+        enqueueSpeech("referee", msg.content, { evaluation: msg.evaluation });
       }
-      if (msg.evaluation) {
-        state.refereeEvaluations.push(msg.evaluation);
-      }
+      pushRefereeEvaluation(msg.evaluation);
       log(`🧐 Referee: ${msg.content}`);
       break;
     case "phase":
@@ -148,6 +142,8 @@ function handleMessage(msg) {
       break;
     case "agent_speak":
       setThinking(msg.agent_id, false);
+      // A new agent taking focus should clear any lingering referee warning toast.
+      document.querySelectorAll(".referee-warning").forEach((w) => w.remove());
       if (state.stepMode) {
         showSpeech(msg.agent_id, msg.content, { persistent: true });
       } else {
@@ -164,15 +160,10 @@ function handleMessage(msg) {
       log(`⚠️ Referee: ${msg.content}`);
       break;
     case "referee_evaluation":
-      if (msg.evaluation) {
-        state.refereeEvaluations.push(msg.evaluation);
-      }
-      break;
-    case "referee_popup":
-      state.pendingRefereePopup = true;
-      tryShowDeferred();
+      pushRefereeEvaluation(msg.evaluation);
       break;
     case "round_over":
+      pushRefereeEvaluation(msg.evaluation);
       state.pendingOutcome = msg;
       tryShowDeferred();
       log(msg.consensus_reached ? `✅ Outcome: ${msg.outcome}` : `⏸ No consensus: ${msg.outcome}`);
@@ -202,9 +193,6 @@ function loadSession(data) {
   }
   if (document.activeElement !== els.minTurns) {
     els.minTurns.value = data.rules.min_turns;
-  }
-  if (document.activeElement !== els.autoPause) {
-    els.autoPause.checked = !!data.rules.auto_pause;
   }
   if (document.activeElement !== els.modeSelect) {
     els.modeSelect.value = data.rules.mode || "realtime";
@@ -246,24 +234,20 @@ function setStatus(status) {
 
   const active = status === "running" || state.circleReady;
   els.startBtn.disabled = active;
+  els.startBtn.textContent = status === "paused" ? "▶ Resume Round" : "▶ Start Round";
   els.stopBtn.disabled = !active;
   els.nextBtn.disabled = !state.circleReady;
 
   // Open the referee modal when the simulation just paused after a running cycle,
   // but wait until any queued speech bubbles have finished.
-  if (status === "paused" && wasRunning && state.refereeEvaluations.length > 0) {
+  if (status === "paused" && wasRunning) {
     state.pendingRefereePopup = true;
     tryShowDeferred();
   }
 }
 
 function updateButtonVisibility() {
-  if (state.stepMode) {
-    els.startBtn.textContent = "▶ Start Round";
-    els.nextBtn.style.display = "";
-  } else {
-    els.nextBtn.style.display = "none";
-  }
+  els.nextBtn.style.display = state.stepMode ? "" : "none";
 }
 
 // Agent helpers
@@ -482,11 +466,16 @@ function showSpeech(agentId, content, options = {}) {
   const el = document.getElementById(`avatar-${agentId}`);
   if (!el) return;
 
-  // Remove any existing bubble for this agent so we don't stack duplicates.
-  const existing = state.activeBubbles.get(agentId);
-  if (existing) {
-    existing.remove();
-    state.activeBubbles.delete(agentId);
+  if (state.stepMode) {
+    // Step mode: keep earlier bubbles visible; just remove this agent's old bubble.
+    const existing = state.activeBubbles.get(agentId);
+    if (existing) {
+      existing.remove();
+      state.activeBubbles.delete(agentId);
+    }
+  } else {
+    // Realtime: only one speech bubble at a time.
+    clearAllSpeechBubbles();
   }
 
   document.querySelectorAll(".avatar.speaking").forEach((a) => a.classList.remove("speaking"));
@@ -523,15 +512,40 @@ function showSpeech(agentId, content, options = {}) {
   }
 }
 
+function pushRefereeEvaluation(evaluation) {
+  if (!evaluation) return;
+  const last = state.refereeEvaluations[state.refereeEvaluations.length - 1];
+  if (last && JSON.stringify(last) === JSON.stringify(evaluation)) return;
+  state.refereeEvaluations.push(evaluation);
+}
+
+function showRefereeMessage(content, evaluation) {
+  const warnings = evaluation?.warnings || [];
+  if (warnings.length > 0) {
+    // Warnings are the single live referee message; the full list is in the modal.
+    showRefereeWarning(warnings[0]);
+  } else {
+    showRefereeSpeech(content);
+  }
+}
+
 function showRefereeSpeech(content) {
   const el = document.getElementById("avatar-referee");
   if (!el) return;
 
-  // Remove any existing referee bubble.
-  const existing = state.activeBubbles.get("referee");
-  if (existing) {
-    existing.remove();
-    state.activeBubbles.delete("referee");
+  // A speech bubble replaces any transient referee warning.
+  document.querySelectorAll(".referee-warning").forEach((w) => w.remove());
+
+  if (state.stepMode) {
+    // Remove any existing referee bubble.
+    const existing = state.activeBubbles.get("referee");
+    if (existing) {
+      existing.remove();
+      state.activeBubbles.delete("referee");
+    }
+  } else {
+    // Realtime: only one speech bubble at a time.
+    clearAllSpeechBubbles();
   }
 
   document.querySelectorAll(".avatar.speaking").forEach((a) => a.classList.remove("speaking"));
@@ -551,6 +565,12 @@ function showRefereeSpeech(content) {
   requestAnimationFrame(() => {
     positionBubbles();
   });
+}
+
+function clearAllSpeechBubbles() {
+  document.querySelectorAll(".speech-bubble").forEach((b) => b.remove());
+  document.querySelectorAll(".referee-warning").forEach((w) => w.remove());
+  state.activeBubbles.clear();
 }
 
 function positionBubbles() {
@@ -714,6 +734,7 @@ function rectsOverlap(a, b) {
 
 function clearBubbles() {
   document.querySelectorAll(".speech-bubble").forEach((b) => b.remove());
+  document.querySelectorAll(".referee-warning").forEach((w) => w.remove());
   document.querySelectorAll(".avatar.speaking").forEach((a) => a.classList.remove("speaking"));
   document.querySelectorAll(".thinking-bubble").forEach((b) => b.remove());
   document.querySelectorAll(".avatar.thinking").forEach((a) => a.classList.remove("thinking"));
@@ -739,7 +760,8 @@ function enqueueSpeech(agentId, content, options = {}) {
 function processSpeechQueue() {
   if (state.currentSpeech) {
     const elapsed = Date.now() - state.currentSpeech.shownAt;
-    if (elapsed >= 5000 && state.speechQueue.length > 0) {
+    const duration = state.currentSpeech.duration || 5000;
+    if (elapsed >= duration && state.speechQueue.length > 0) {
       advanceSpeech();
     }
     tryShowDeferred();
@@ -757,18 +779,20 @@ function processSpeechQueue() {
 
 function displaySpeech(agentId, content, options = {}) {
   if (agentId === "referee") {
-    showRefereeSpeech(content);
+    showRefereeMessage(content, options.evaluation);
   } else {
     showSpeech(agentId, content, { persistent: true });
   }
-  if (options.warnings && options.warnings.length > 0) {
-    options.warnings.forEach((warning) => showRefereeWarning(warning));
+  // Referee summaries can be shorter so the next agent isn't blocked as long.
+  const duration = agentId === "referee" ? 3000 : 5000;
+  state.currentSpeech = { agentId, content, shownAt: Date.now(), duration };
+  if (state.speechTimer) {
+    clearTimeout(state.speechTimer);
   }
-  state.currentSpeech = { agentId, content, shownAt: Date.now() };
   state.speechTimer = setTimeout(() => {
     state.speechTimer = null;
     onMinDisplayTimeElapsed();
-  }, 5000);
+  }, duration);
 }
 
 function onMinDisplayTimeElapsed() {
@@ -788,6 +812,10 @@ function advanceSpeech() {
 function removeCurrentSpeech() {
   if (!state.currentSpeech) return;
   const { agentId } = state.currentSpeech;
+  // Referee may have shown a warning banner instead of a speech bubble; clear it too.
+  if (agentId === "referee") {
+    document.querySelectorAll(".referee-warning").forEach((w) => w.remove());
+  }
   const bubble = state.activeBubbles.get(agentId);
   if (bubble) {
     bubble.remove();
@@ -807,20 +835,34 @@ function removeCurrentSpeech() {
 }
 
 function tryShowDeferred() {
-  if (state.currentSpeech || state.speechQueue.length > 0) return;
+  if (state.speechQueue.length > 0) return;
+
+  const hasDeferred = state.pendingOutcome || state.pendingRefereePopup;
+
+  // If a speech bubble is still on screen but has met its minimum display time,
+  // clear it so round-end or popup UI can take focus.
+  if (state.currentSpeech) {
+    const elapsed = Date.now() - state.currentSpeech.shownAt;
+    const duration = state.currentSpeech.duration || 5000;
+    if (hasDeferred && elapsed >= duration) {
+      removeCurrentSpeech();
+    } else {
+      return;
+    }
+  }
 
   if (state.pendingOutcome) {
-    const msg = state.pendingOutcome;
     state.pendingOutcome = null;
-    if (els.outcomeCard.classList.contains("hidden")) {
-      showOutcome(msg.outcome, msg.summary, msg.consensus_proposal, msg.proposal_details, msg.consensus_reached);
+    hideOutcome();
+    if (els.transcriptModal.classList.contains("hidden")) {
+      showRefereeEvaluations(true);
     }
   }
 
   if (state.pendingRefereePopup) {
     state.pendingRefereePopup = false;
-    if (els.transcriptModal.classList.contains("hidden")) {
-      showRefereeEvaluations();
+    if (els.transcriptModal.classList.contains("hidden") && state.refereeEvaluations.length > 0) {
+      showRefereeEvaluations(false);
     }
   }
 }
@@ -879,12 +921,30 @@ function showTranscript(agentId) {
   els.transcriptModal.classList.remove("hidden");
 }
 
-function showRefereeEvaluations() {
-  els.transcriptTitle.textContent = "🧐 Referee Assessments";
-  if (state.refereeEvaluations.length === 0) {
+function showRefereeEvaluations(isFinal = false) {
+  // A focused assessment replaces any transient referee message.
+  document.querySelectorAll(".referee-warning").forEach((w) => w.remove());
+  const refereeBubble = state.activeBubbles.get("referee");
+  if (refereeBubble) {
+    refereeBubble.remove();
+    state.activeBubbles.delete("referee");
+  }
+  const refereeAvatar = document.getElementById("avatar-referee");
+  if (refereeAvatar && state.speaking === "referee") {
+    refereeAvatar.classList.remove("speaking");
+    state.speaking = null;
+  }
+
+  els.transcriptTitle.textContent = isFinal ? "🧐 Where Things Stand" : "🧐 Referee Assessments";
+  // End-of-run report should only show the final evaluation, not the history of
+  // interim assessments from each cycle.
+  const evaluationsToRender = isFinal
+    ? state.refereeEvaluations.slice(-1)
+    : state.refereeEvaluations;
+  if (evaluationsToRender.length === 0) {
     els.transcriptBody.innerHTML = `<p class="empty-transcript">The referee hasn't evaluated the round yet.</p>`;
   } else {
-    els.transcriptBody.innerHTML = state.refereeEvaluations
+    els.transcriptBody.innerHTML = evaluationsToRender
       .map((evaluation, i) => {
         const checklist = evaluation.checklist || {};
         const checklistHtml = Object.entries(checklist)
@@ -894,9 +954,6 @@ function showRefereeEvaluations() {
             return `<div class="checklist-item ${status}"><strong>${escapeHtml(key)}:</strong> <span class="status">${escapeHtml(status)}</span>${note ? ` — ${escapeHtml(note)}` : ""}</div>`;
           })
           .join("");
-        const warningsHtml = (evaluation.warnings || []).length
-          ? `<ul class="eval-warnings">${evaluation.warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join("")}</ul>`
-          : "";
         const proposalHtml = evaluation.consensus_reached && evaluation.consensus_proposal
           ? `<div class="eval-proposal"><strong>Consensus proposal:</strong> ${escapeHtml(evaluation.consensus_proposal)}</div>`
           : "";
@@ -908,12 +965,12 @@ function showRefereeEvaluations() {
               </div>
             </div>`
           : "";
+        const headerText = isFinal ? "Final Assessment" : `Assessment #${i + 1}`;
         return `
           <div class="evaluation-entry">
-            <div class="eval-header">Assessment #${i + 1}${evaluation.consensus_reached ? " ✅ Consensus" : ""}</div>
+            <div class="eval-header">${headerText}${evaluation.consensus_reached ? " ✅ Consensus" : ""}</div>
             <div class="eval-summary">${escapeHtml(evaluation.status_summary || "")}</div>
             <div class="checklist">${checklistHtml}</div>
-            ${warningsHtml}
             ${proposalHtml}
             ${detailsHtml}
           </div>
@@ -974,8 +1031,19 @@ function hideOutcome() {
 }
 
 function showRefereeWarning(content) {
-  // Remove any existing warning
+  // Remove any existing warning and the current referee speech bubble so only
+  // one live referee message is visible at a time.
   document.querySelectorAll(".referee-warning").forEach((el) => el.remove());
+  const refereeBubble = state.activeBubbles.get("referee");
+  if (refereeBubble) {
+    refereeBubble.remove();
+    state.activeBubbles.delete("referee");
+  }
+  const refereeAvatar = document.getElementById("avatar-referee");
+  if (refereeAvatar && state.speaking === "referee") {
+    refereeAvatar.classList.remove("speaking");
+    state.speaking = null;
+  }
 
   const warning = document.createElement("div");
   warning.className = "referee-warning";
@@ -1008,7 +1076,6 @@ function updateRules() {
         turn_order: els.turnOrder.value,
         max_turns: parseInt(els.maxTurns.value, 10),
         min_turns: parseInt(els.minTurns.value, 10),
-        auto_pause: els.autoPause.checked,
         mode: els.modeSelect.value,
       },
       rules_of_engagement: getRulesFromUI(),
@@ -1093,7 +1160,6 @@ els.topicInput.addEventListener("change", updateTopic);
 els.turnOrder.addEventListener("change", updateRules);
 els.maxTurns.addEventListener("change", updateRules);
 els.minTurns.addEventListener("change", updateRules);
-els.autoPause.addEventListener("change", updateRules);
 els.modeSelect.addEventListener("change", updateRules);
 els.addRule.addEventListener("click", addRule);
 
