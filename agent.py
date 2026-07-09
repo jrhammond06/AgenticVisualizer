@@ -4,10 +4,40 @@ from models import Agent as AgentModel, RuleOfEngagement, RuleSet
 import config
 import llm
 
+_DEFAULT_SPEAKING_INSTRUCTIONS = """Speaking rules:
+- Reply in 1 or 2 short sentences only.
+- Stay in character and advocate for your goal, but be willing to compromise if it makes sense.
+- Keep the rules of engagement in mind when making or evaluating proposals.
+- If the Referee says the group is violating a rule, help fix it — do not ignore the warning.
+- Speak directly to the other agents by name when relevant.
+- Do not use lists, bullet points, or long explanations.
+- Be clear, respectful, and concise."""
+
+_DEFAULT_TEMPLATE = """You are {name}, a participant in a managed debate.
+
+Your visible goal: {goal}
+The group is discussing this topic: {topic}
+
+Rules of engagement:
+{rules}
+
+Additional instructions from the moderator (this is what you, as this participant, want and need):
+{system_prompt}
+
+The Referee checks the discussion every few turns and will warn the group if a proposal breaks a hard constraint or guideline. If the Referee raises a warning, you MUST help address it in your next reply.
+
+{speaking_instructions}"""
+
+
+class _SafeDict(dict):
+    def __missing__(self, key):
+        return f"[{key} not provided]"
+
 
 class Agent:
-    def __init__(self, model: AgentModel):
+    def __init__(self, model: AgentModel, prompt_template: str = ""):
         self.model = model
+        self.prompt_template = prompt_template
 
     def _format_rules(self, rules_of_engagement: List[RuleOfEngagement]) -> str:
         if not rules_of_engagement:
@@ -22,27 +52,20 @@ class Agent:
         self, topic: str, rules: RuleSet, rules_of_engagement: List[RuleOfEngagement]
     ) -> str:
         rules_text = self._format_rules(rules_of_engagement)
-        return f"""You are {self.model.name}, a participant in a managed debate.
-
-Your visible goal: {self.model.goal}
-The group is discussing this topic: {topic}
-
-Rules of engagement:
-{rules_text}
-
-Additional instructions from the moderator (this is what you, as this participant, want and need):
-{self.model.system_prompt}
-
-The Referee checks the discussion every few turns and will warn the group if a proposal breaks a hard constraint or guideline. If the Referee raises a warning, you MUST help address it in your next reply.
-
-Speaking rules:
-- Reply in 1 or 2 short sentences only.
-- Stay in character and advocate for your goal, but be willing to compromise if it makes sense.
-- Keep the rules of engagement in mind when making or evaluating proposals.
-- If the Referee says the group is violating a rule, help fix it — do not ignore the warning.
-- Speak directly to the other agents by name when relevant.
-- Do not use lists, bullet points, or long explanations.
-- Be clear, respectful, and concise."""
+        speaking_instructions = rules.agent_instructions.strip() or _DEFAULT_SPEAKING_INSTRUCTIONS
+        template = self.prompt_template.strip() or _DEFAULT_TEMPLATE
+        ctx = _SafeDict(
+            name=self.model.name,
+            goal=self.model.goal,
+            topic=topic,
+            rules=rules_text,
+            system_prompt=self.model.system_prompt,
+            speaking_instructions=speaking_instructions,
+        )
+        try:
+            return template.format_map(ctx)
+        except Exception:
+            return template
 
     async def generate_reply(
         self,
@@ -66,6 +89,5 @@ Speaking rules:
         ]
 
         reply = await llm.chat_completion(messages, temperature=0.8, max_tokens=config.AGENT_MAX_TOKENS)
-        # Strip quotes if the model added them
         reply = reply.strip('"').strip("'").strip()
         return reply

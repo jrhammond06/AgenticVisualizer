@@ -1,5 +1,6 @@
 import logging
 import os
+import secrets
 
 from dotenv import load_dotenv
 
@@ -12,6 +13,14 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+# Auth / session
+SECRET_KEY = os.getenv("SECRET_KEY", secrets.token_hex(32))
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
+
+# Database
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./agenticvisualizer.db")
 
 # OpenRouter configuration
 MODEL_NAME = os.getenv("MODEL_NAME", "openai/gpt-4o-mini")

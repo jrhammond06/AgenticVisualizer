@@ -54,7 +54,7 @@ async def run_round(session: Session, broadcast):
         await broadcast({"type": "round_started"})
 
     referee = Referee(session.rules_of_engagement)
-    actors = {a.id: AgentActor(a) for a in session.agents}
+    actors = {a.id: AgentActor(a, session.agent_prompt_template) for a in session.agents}
 
     try:
         if session.rules.mode == "step_by_step":

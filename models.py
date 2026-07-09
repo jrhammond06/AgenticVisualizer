@@ -24,6 +24,7 @@ class RuleSet(BaseModel):
     min_turns: int = MIN_TURNS_DEFAULT
     turn_order: Literal["sequential", "random", "simultaneous_proposal"] = "sequential"
     mode: Literal["realtime", "auto_pause", "step_by_step"] = "realtime"
+    agent_instructions: str = ""
 
 
 class RuleOfEngagement(BaseModel):
@@ -31,6 +32,10 @@ class RuleOfEngagement(BaseModel):
     name: str
     text: str
     severity: Literal["hard_constraint", "guideline"] = "guideline"
+    # "referee" = referee only; "agents" = agent prompts only; "both" = both.
+    # Constraints on packages are always "referee". Process rules in rule sets
+    # default to "referee" for backward compat; set to "both" for tone/behaviour rules.
+    applies_to: Literal["referee", "agents", "both"] = "referee"
 
 
 class RefereeEvaluation(BaseModel):
@@ -49,6 +54,10 @@ class Session(BaseModel):
     rules: RuleSet = Field(default_factory=RuleSet)
     rules_of_engagement: List[RuleOfEngagement] = Field(default_factory=list)
     status: Literal["idle", "running", "paused"] = "idle"
+    # Loaded package metadata (set when admin loads a package for a run).
+    loaded_package_id: Optional[int] = None
+    loaded_package_name: Optional[str] = None
+    agent_prompt_template: str = ""
     # Round state, preserved when auto-pause interrupts a round.
     turn: int = 0
     consensus_reached: bool = False

@@ -9,7 +9,7 @@
 <body>
   <div id="app">
     <header class="top-bar">
-      <button id="toggle-panel" class="icon-btn" title="Toggle teacher panel">☰</button>
+      <button id="toggle-panel" class="icon-btn" title="Toggle panel">☰</button>
       <h1>AgenticVisualizer</h1>
       <div class="topic-banner">
         <span id="topic-display">Loading…</span>
@@ -19,13 +19,16 @@
       <button id="next-step" class="action-btn" disabled>⏭ Next</button>
       <button id="stop-round" class="action-btn danger" disabled>⏹ Stop</button>
       <div id="status-indicator" class="status idle">Idle</div>
+      <a href="/admin" style="font-size:0.8rem;color:var(--text-muted);text-decoration:none;margin-left:4px">Admin</a>
     </header>
 
     <main class="main">
       <aside id="teacher-panel" class="panel open">
-        <div class="panel-section">
-          <h2>Topic</h2>
-          <input type="text" id="topic-input" placeholder="What are they debating?">
+
+        <!-- Loaded package info -->
+        <div class="panel-section" id="package-section" style="display:none">
+          <h2>Loaded package</h2>
+          <div id="package-banner" class="package-banner"></div>
         </div>
 
         <div class="panel-section">
@@ -47,30 +50,15 @@
             </select>
           </label>
           <div class="row">
-            <label>
-              Max turns
-              <input type="number" id="max-turns" min="2" max="30" value="8">
-            </label>
-            <label>
-              Min turns
-              <input type="number" id="min-turns" min="1" max="10" value="2">
-            </label>
+            <label>Max turns <input type="number" id="max-turns" min="2" max="30" value="8"></label>
+            <label>Min turns <input type="number" id="min-turns" min="1" max="10" value="2"></label>
           </div>
-        </div>
-
-        <div class="panel-section">
-          <div class="section-header">
-            <h2>Rules of engagement</h2>
-            <button id="add-rule" class="small-btn">+ Add rule</button>
-          </div>
-          <div id="rules-list"></div>
-          <p class="hint">Hard constraints are non-negotiable; guidelines are strongly preferred norms.</p>
         </div>
 
         <div class="panel-section">
           <div class="section-header">
             <h2>Agents</h2>
-            <button id="add-agent" class="small-btn">+ Add</button>
+            <button id="add-agent" class="small-btn">+ Ad-hoc</button>
           </div>
           <div id="agents-list"></div>
         </div>

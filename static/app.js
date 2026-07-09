@@ -23,13 +23,10 @@ const avatarPool = ["🤖", "🐶", "🐱", "🦊", "🐼", "🐨", "🦁", "�
 // DOM refs
 const els = {
   topicDisplay: document.getElementById("topic-display"),
-  topicInput: document.getElementById("topic-input"),
   turnOrder: document.getElementById("turn-order"),
   maxTurns: document.getElementById("max-turns"),
   minTurns: document.getElementById("min-turns"),
   modeSelect: document.getElementById("mode-select"),
-  rulesList: document.getElementById("rules-list"),
-  addRule: document.getElementById("add-rule"),
   agentsList: document.getElementById("agents-list"),
   avatarsContainer: document.getElementById("avatars-container"),
   startBtn: document.getElementById("start-round"),
@@ -181,43 +178,36 @@ function loadSession(data) {
   state.thinking.clear();
   state.speaking = null;
 
-  // Update inputs without overwriting user focus unnecessarily
-  if (document.activeElement !== els.topicInput) {
-    els.topicInput.value = data.topic;
-  }
-  if (document.activeElement !== els.turnOrder) {
-    els.turnOrder.value = data.rules.turn_order;
-  }
-  if (document.activeElement !== els.maxTurns) {
-    els.maxTurns.value = data.rules.max_turns;
-  }
-  if (document.activeElement !== els.minTurns) {
-    els.minTurns.value = data.rules.min_turns;
-  }
-  if (document.activeElement !== els.modeSelect) {
-    els.modeSelect.value = data.rules.mode || "realtime";
-  }
+  if (document.activeElement !== els.turnOrder) els.turnOrder.value = data.rules.turn_order;
+  if (document.activeElement !== els.maxTurns) els.maxTurns.value = data.rules.max_turns;
+  if (document.activeElement !== els.minTurns) els.minTurns.value = data.rules.min_turns;
+  if (document.activeElement !== els.modeSelect) els.modeSelect.value = data.rules.mode || "realtime";
 
   state.stepMode = (data.rules.mode || "realtime") === "step_by_step";
   updateButtonVisibility();
 
   els.topicDisplay.textContent = data.topic;
 
-  // Rebuild per-agent transcripts from session history (useful on reconnect/reload while paused).
-  state.transcripts = {};
-  (data.history || []).forEach((msg) => {
-    if (msg.agent_id && msg.agent_id !== "referee") {
-      addTranscript(msg.agent_id, msg.content);
-    }
-  });
-
-  // Restore the latest referee evaluation if present.
-  state.refereeEvaluations = [];
-  if (data.last_evaluation) {
-    state.refereeEvaluations.push(data.last_evaluation);
+  // Show loaded package banner if a package is loaded.
+  const pkgSection = document.getElementById("package-section");
+  const pkgBanner = document.getElementById("package-banner");
+  if (data.loaded_package_name) {
+    pkgBanner.innerHTML = `<strong>${escapeHtml(data.loaded_package_name)}</strong><br>
+      <span style="font-size:0.85rem;color:var(--text-muted)">${escapeHtml(data.topic)}</span>`;
+    pkgSection.style.display = "";
+  } else {
+    pkgSection.style.display = "none";
   }
 
-  renderRulesList();
+  // Rebuild per-agent transcripts from session history.
+  state.transcripts = {};
+  (data.history || []).forEach((msg) => {
+    if (msg.agent_id && msg.agent_id !== "referee") addTranscript(msg.agent_id, msg.content);
+  });
+
+  state.refereeEvaluations = [];
+  if (data.last_evaluation) state.refereeEvaluations.push(data.last_evaluation);
+
   renderAgentList();
   renderAvatars();
   setStatus(data.status);
@@ -260,74 +250,6 @@ function getAgentName(id) {
   return getAgent(id)?.name || "Agent";
 }
 
-// Rules of engagement UI
-function renderRulesList() {
-  if (!state.session) return;
-  // Don't clobber the form while the teacher is typing in it
-  const focused = els.rulesList.querySelector("input:focus, textarea:focus, select:focus");
-  if (focused) return;
-
-  els.rulesList.innerHTML = "";
-
-  (state.session.rules_of_engagement || []).forEach((rule) => {
-    const card = document.createElement("div");
-    card.className = "rule-card";
-    card.dataset.id = rule.id;
-
-    card.innerHTML = `
-      <div class="rule-header">
-        <input type="text" class="rule-name-input" data-field="name" value="${escapeHtml(rule.name)}" placeholder="Rule name">
-        <select class="rule-severity" data-field="severity">
-          <option value="hard_constraint" ${rule.severity === "hard_constraint" ? "selected" : ""}>Hard constraint</option>
-          <option value="guideline" ${rule.severity === "guideline" ? "selected" : ""}>Guideline</option>
-        </select>
-        <button class="delete-rule" title="Remove">✕</button>
-      </div>
-      <textarea class="rule-text" data-field="text" placeholder="Describe the rule...">${escapeHtml(rule.text)}</textarea>
-    `;
-
-    card.querySelectorAll("input, select, textarea").forEach((input) => {
-      input.addEventListener("change", () => updateRules());
-    });
-
-    card.querySelector(".delete-rule").addEventListener("click", () => {
-      deleteRule(rule.id);
-    });
-
-    els.rulesList.appendChild(card);
-  });
-}
-
-function getRulesFromUI() {
-  const rules = [];
-  els.rulesList.querySelectorAll(".rule-card").forEach((card) => {
-    const id = card.dataset.id;
-    const name = card.querySelector('[data-field="name"]').value.trim() || "Untitled rule";
-    const severity = card.querySelector('[data-field="severity"]').value;
-    const text = card.querySelector('[data-field="text"]').value;
-    rules.push({ id, name, severity, text });
-  });
-  return rules;
-}
-
-function addRule() {
-  const newRule = {
-    name: "New rule",
-    severity: "guideline",
-    text: "",
-  };
-  sendWs("update_session", {
-    data: { rules_of_engagement: [...(state.session.rules_of_engagement || []), newRule] },
-  });
-}
-
-function deleteRule(id) {
-  sendWs("update_session", {
-    data: {
-      rules_of_engagement: (state.session.rules_of_engagement || []).filter((r) => r.id !== id),
-    },
-  });
-}
 
 // Rendering avatars in a circle
 function renderAvatars() {
@@ -388,10 +310,9 @@ function renderAvatars() {
   container.appendChild(referee);
 }
 
-// Teacher panel agent list
+// Agent list — compact read-only rows with an expand toggle for full editing.
 function renderAgentList() {
   if (!state.session) return;
-  // Don't clobber the form while the teacher is typing in it
   const focused = els.agentsList.querySelector("input:focus, textarea:focus, select:focus");
   if (focused) return;
 
@@ -404,39 +325,47 @@ function renderAgentList() {
 
     card.innerHTML = `
       <div class="agent-header">
-        <select class="agent-avatar-picker" data-field="avatar">${avatarPool
-          .map((a) => `<option value="${a}" ${a === agent.avatar ? "selected" : ""}>${a}</option>`)
-          .join("")}</select>
-        <input type="text" class="agent-name-input" data-field="name" value="${escapeHtml(agent.name)}" placeholder="Name">
-        <button class="delete-agent" title="Remove">✕</button>
+        <span style="font-size:1.4rem">${escapeHtml(agent.avatar)}</span>
+        <span class="agent-name-input" style="flex:1;font-weight:700">${escapeHtml(agent.name)}</span>
+        <button class="small-btn" style="font-size:0.75rem;padding:4px 8px"
+                onclick="toggleAgentEdit('${agent.id}')">Edit</button>
+        <button class="delete-agent" title="Remove" onclick="deleteAgent('${agent.id}')">✕</button>
       </div>
-      <input type="text" data-field="goal" value="${escapeHtml(agent.goal)}" placeholder="Visible goal">
-      <textarea data-field="system_prompt" placeholder="System prompt / hidden instructions">${escapeHtml(
-        agent.system_prompt
-      )}</textarea>
+      <div id="agent-edit-${agent.id}" style="display:none;margin-top:8px">
+        <div style="display:flex;gap:6px;margin-bottom:6px;align-items:center">
+          <select class="agent-avatar-picker" data-field="avatar">${avatarPool
+            .map((a) => `<option value="${a}" ${a === agent.avatar ? "selected" : ""}>${a}</option>`)
+            .join("")}</select>
+          <input type="text" data-field="name" value="${escapeHtml(agent.name)}"
+                 placeholder="Name" style="flex:1">
+        </div>
+        <input type="text" data-field="goal" value="${escapeHtml(agent.goal)}"
+               placeholder="Visible goal" style="margin-bottom:6px">
+        <textarea data-field="system_prompt" placeholder="System prompt"
+                  style="min-height:80px">${escapeHtml(agent.system_prompt)}</textarea>
+        <button class="small-btn" style="margin-top:6px"
+                onclick="saveAgentEdit('${agent.id}')">Save</button>
+      </div>
     `;
-
-    card.querySelectorAll("input, select, textarea").forEach((input) => {
-      input.addEventListener("change", () => updateAgentFromCard(card));
-    });
-
-    card.querySelector(".delete-agent").addEventListener("click", () => {
-      if (confirm(`Delete ${agent.name}?`)) {
-        deleteAgent(agent.id);
-      }
-    });
 
     els.agentsList.appendChild(card);
   });
 }
 
-function updateAgentFromCard(card) {
-  const id = card.dataset.id;
+function toggleAgentEdit(id) {
+  const el = document.getElementById(`agent-edit-${id}`);
+  el.style.display = el.style.display === "none" ? "" : "none";
+}
+
+function saveAgentEdit(id) {
+  const card = els.agentsList.querySelector(`[data-id="${id}"]`);
+  if (!card) return;
   const update = {};
   card.querySelectorAll("[data-field]").forEach((el) => {
     update[el.dataset.field] = el.value;
   });
   updateAgent(id, update);
+  toggleAgentEdit(id);
 }
 
 // Visual effects
@@ -1065,10 +994,6 @@ function log(text) {
 }
 
 // API / WS actions
-function updateTopic() {
-  sendWs("update_session", { data: { topic: els.topicInput.value } });
-}
-
 function updateRules() {
   sendWs("update_session", {
     data: {
@@ -1078,7 +1003,6 @@ function updateRules() {
         min_turns: parseInt(els.minTurns.value, 10),
         mode: els.modeSelect.value,
       },
-      rules_of_engagement: getRulesFromUI(),
     },
   });
 }
@@ -1152,16 +1076,13 @@ function toggleCollapse(button) {
 els.togglePanel.addEventListener("click", () => {
   els.teacherPanel.classList.toggle("open");
   els.teacherPanel.classList.toggle("closed");
-  // Reposition bubbles after the panel animation finishes.
   setTimeout(positionBubbles, 300);
 });
 
-els.topicInput.addEventListener("change", updateTopic);
 els.turnOrder.addEventListener("change", updateRules);
 els.maxTurns.addEventListener("change", updateRules);
 els.minTurns.addEventListener("change", updateRules);
 els.modeSelect.addEventListener("change", updateRules);
-els.addRule.addEventListener("click", addRule);
 
 els.startBtn.addEventListener("click", startRound);
 els.nextBtn.addEventListener("click", () => sendWs("next_step"));

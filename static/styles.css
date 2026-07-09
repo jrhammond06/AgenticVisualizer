@@ -853,3 +853,13 @@ html, body {
 .collapse-content {
   margin-top: 8px;
 }
+
+/* Loaded-package banner on the session page */
+.package-banner {
+  background: #eef2ff;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--primary);
+}

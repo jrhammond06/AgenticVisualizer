@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgenticVisualizer — My Profile</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <style>
+    body { overflow: auto; }
+    .form-layout {
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 24px 20px 60px;
+    }
+    .form-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 28px;
+    }
+    .form-header h1 { margin: 0; font-size: 1.3rem; color: var(--primary); }
+    .form-header .meta { font-size: 0.85rem; color: var(--text-muted); }
+    .module-card {
+      background: var(--panel-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      margin-bottom: 20px;
+      box-shadow: var(--shadow);
+    }
+    .module-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+    .field-group { margin-bottom: 18px; }
+    .field-group label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .field-group input, .field-group textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-family: inherit;
+      line-height: 1.5;
+      box-sizing: border-box;
+      transition: border-color 0.15s;
+    }
+    .field-group input:focus, .field-group textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+    .field-group textarea { resize: vertical; min-height: 90px; }
+    .save-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--panel-bg);
+      border-top: 1px solid var(--border);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.06);
+    }
+    .save-bar button {
+      padding: 10px 28px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .save-bar button:hover { background: var(--primary-hover); }
+    .save-status { font-size: 0.85rem; color: var(--text-muted); }
+    .save-status.saved { color: var(--success); }
+    .preview-toggle {
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--primary);
+      user-select: none;
+      margin-bottom: 16px;
+    }
+    .preview-box {
+      background: #f3f4f6;
+      border-radius: 8px;
+      padding: 14px;
+      font-size: 0.85rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .empty-state {
+      color: var(--text-muted);
+      text-align: center;
+      padding: 48px 20px;
+      font-size: 0.9rem;
+    }
+    .logout-link {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      text-decoration: none;
+    }
+    .logout-link:hover { color: var(--danger); }
+  </style>
+</head>
+<body>
+  <div class="form-layout">
+    <div class="form-header">
+      <div>
+        <h1>My Agent Profile</h1>
+        <div class="meta" id="class-meta"></div>
+      </div>
+      <form method="POST" action="/logout" style="margin:0">
+        <button type="submit" class="logout-link"
+                style="background:none;border:none;cursor:pointer;font-size:0.85rem;color:var(--text-muted)">
+          Sign out
+        </button>
+      </form>
+    </div>
+
+    <div id="modules-container"></div>
+
+    <div class="module-card">
+      <div class="preview-toggle" id="preview-toggle">▶ Preview your agent's system prompt</div>
+      <div id="preview-area" class="hidden">
+        <div id="preview-box" class="preview-box"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="save-bar">
+    <button id="save-btn">Save</button>
+    <span class="save-status" id="save-status"></span>
+  </div>
+
+  <script src="/static/form.js"></script>
+</body>
+</html>

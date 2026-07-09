@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgenticVisualizer — Login</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <style>
+    body { display: flex; align-items: center; justify-content: center; min-height: 100vh; overflow: auto; }
+    .login-card {
+      background: var(--panel-bg);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 40px 48px;
+      width: 100%;
+      max-width: 380px;
+    }
+    .login-card h1 { margin: 0 0 6px; font-size: 1.4rem; color: var(--primary); }
+    .login-card p { margin: 0 0 28px; color: var(--text-muted); font-size: 0.9rem; }
+    .login-card label { display: flex; flex-direction: column; gap: 6px; font-size: 0.85rem;
+                        font-weight: 600; margin-bottom: 16px; }
+    .login-card input {
+      padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+      font-size: 1rem; font-family: inherit; width: 100%; box-sizing: border-box;
+    }
+    .login-card input:focus { outline: 2px solid var(--primary); border-color: transparent; }
+    .login-card button {
+      width: 100%; padding: 12px; background: var(--primary); color: white;
+      border: none; border-radius: var(--radius); font-size: 1rem; font-weight: 700;
+      cursor: pointer; margin-top: 8px;
+    }
+    .login-card button:hover { background: var(--primary-hover); }
+    .error-msg {
+      background: #fee2e2; color: #991b1b; border-radius: 8px;
+      padding: 10px 14px; margin-bottom: 18px; font-size: 0.875rem; font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <h1>AgenticVisualizer</h1>
+    <p>Sign in to continue</p>
+    <div id="error-msg" class="error-msg" style="display:none">Incorrect username or password.</div>
+    <form method="POST" action="/login">
+      <label>Username <input type="text" name="username" autocomplete="username" autofocus required></label>
+      <label>Password <input type="password" name="password" autocomplete="current-password" required></label>
+      <button type="submit">Sign in</button>
+    </form>
+  </div>
+  <script>
+    if (new URLSearchParams(location.search).get("error")) {
+      document.getElementById("error-msg").style.display = "";
+    }
+  </script>
+</body>
+</html>
