@@ -25,6 +25,13 @@ async function loadForm() {
     title.textContent = mod.week_number ? `Week ${mod.week_number} — ${mod.title}` : mod.title;
     card.appendChild(title);
 
+    if (mod.preamble) {
+      const preamble = document.createElement("div");
+      preamble.className = "module-preamble";
+      preamble.textContent = mod.preamble;
+      card.appendChild(preamble);
+    }
+
     (mod.field_defs || []).forEach((field) => {
       const group = document.createElement("div");
       group.className = "field-group";

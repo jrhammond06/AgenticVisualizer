@@ -712,8 +712,14 @@ function displaySpeech(agentId, content, options = {}) {
   } else {
     showSpeech(agentId, content, { persistent: true });
   }
-  // Referee summaries can be shorter so the next agent isn't blocked as long.
-  const duration = agentId === "referee" ? 3000 : 5000;
+  // When the referee shows a warning banner, hold the slot as long as the banner
+  // lives (8s) so the queue doesn't advance while the warning is still on screen.
+  // For a plain status summary (no warnings), 4s is enough to read.
+  let duration = 5000;
+  if (agentId === "referee") {
+    const hasWarnings = (options.evaluation?.warnings?.length ?? 0) > 0;
+    duration = hasWarnings ? 8000 : 4000;
+  }
   state.currentSpeech = { agentId, content, shownAt: Date.now(), duration };
   if (state.speechTimer) {
     clearTimeout(state.speechTimer);
@@ -741,10 +747,9 @@ function advanceSpeech() {
 function removeCurrentSpeech() {
   if (!state.currentSpeech) return;
   const { agentId } = state.currentSpeech;
-  // Referee may have shown a warning banner instead of a speech bubble; clear it too.
-  if (agentId === "referee") {
-    document.querySelectorAll(".referee-warning").forEach((w) => w.remove());
-  }
+  // Do NOT remove .referee-warning here — the banner has its own 8s timer set in
+  // showRefereeWarning and should outlive the speech queue slot. Removing it here
+  // caused warnings to disappear after only 3s regardless of the banner's timeout.
   const bubble = state.activeBubbles.get(agentId);
   if (bubble) {
     bubble.remove();

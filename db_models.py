@@ -18,7 +18,8 @@ class FormModule(SQLModel, table=True):
     class_tag: str = Field(index=True)
     title: str
     week_number: int = 0
-    # JSON array: [{key, label, type}]  type is "text" or "textarea"
+    preamble: str = ""
+    # JSON array: [{key, label}]
     field_defs: str = "[]"
     unlocked: bool = True
     created_at: datetime = Field(default_factory=datetime.utcnow)

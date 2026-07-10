@@ -257,7 +257,7 @@ async def get_form_data(request: Request, db: DBSession = Depends(get_db)):
         "class_tag": class_tag,
         "modules": [
             {"id": m.id, "title": m.title, "week_number": m.week_number,
-             "field_defs": json.loads(m.field_defs)}
+             "preamble": m.preamble, "field_defs": json.loads(m.field_defs)}
             for m in modules
         ],
         "answers": answers,
@@ -395,7 +395,7 @@ async def list_modules(request: Request, db: DBSession = Depends(get_db)):
         q = q.where(FormModule.class_tag == class_tag)
     modules = db.exec(q).all()
     return [{"id": m.id, "class_tag": m.class_tag, "title": m.title, "week_number": m.week_number,
-             "field_defs": json.loads(m.field_defs), "unlocked": m.unlocked} for m in modules]
+             "preamble": m.preamble, "field_defs": json.loads(m.field_defs), "unlocked": m.unlocked} for m in modules]
 
 
 @app.post("/api/admin/modules")
@@ -406,6 +406,7 @@ async def create_module(request: Request, db: DBSession = Depends(get_db)):
         class_tag=body.get("class_tag", ""),
         title=body.get("title", "New module"),
         week_number=body.get("week_number", 0),
+        preamble=body.get("preamble", ""),
         field_defs=json.dumps(body.get("field_defs", [])),
         unlocked=body.get("unlocked", True),
     )
@@ -413,7 +414,8 @@ async def create_module(request: Request, db: DBSession = Depends(get_db)):
     db.commit()
     db.refresh(mod)
     return {"id": mod.id, "class_tag": mod.class_tag, "title": mod.title,
-            "week_number": mod.week_number, "field_defs": json.loads(mod.field_defs), "unlocked": mod.unlocked}
+            "week_number": mod.week_number, "preamble": mod.preamble,
+            "field_defs": json.loads(mod.field_defs), "unlocked": mod.unlocked}
 
 
 @app.put("/api/admin/modules/{module_id}")
@@ -424,14 +426,15 @@ async def update_module(module_id: int, request: Request,
     if not mod:
         raise HTTPException(status_code=404)
     body = await request.json()
-    for field in ("title", "week_number", "unlocked"):
+    for field in ("title", "week_number", "unlocked", "preamble"):
         if field in body:
             setattr(mod, field, body[field])
     if "field_defs" in body:
         mod.field_defs = json.dumps(body["field_defs"])
     db.commit()
     return {"id": mod.id, "class_tag": mod.class_tag, "title": mod.title,
-            "week_number": mod.week_number, "field_defs": json.loads(mod.field_defs), "unlocked": mod.unlocked}
+            "week_number": mod.week_number, "preamble": mod.preamble,
+            "field_defs": json.loads(mod.field_defs), "unlocked": mod.unlocked}
 
 
 @app.delete("/api/admin/modules/{module_id}")

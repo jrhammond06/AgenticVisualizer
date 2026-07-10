@@ -261,6 +261,10 @@ function renderModulesList(modules, classTag) {
           <div><span class="field-label">Week number</span>
                <input class="admin-input" type="number" id="mod-week-${mod.id}" value="${mod.week_number}"></div>
         </div>
+        <div style="margin-bottom:12px">
+          <span class="field-label">Preamble <span style="font-weight:400;color:var(--text-muted)">(shown to students above the fields)</span></span>
+          <textarea class="admin-textarea" id="mod-preamble-${mod.id}" style="min-height:72px">${esc(mod.preamble || "")}</textarea>
+        </div>
         <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:0.875rem;font-weight:600">
           <input type="checkbox" id="mod-unlocked-${mod.id}" ${mod.unlocked ? "checked" : ""}> Unlocked (visible to students)
         </label>
@@ -280,19 +284,30 @@ function toggleModuleEdit(id) {
   document.getElementById(id).classList.toggle("hidden");
 }
 
+// ── Field store (replaces live-DOM field editing) ─────────────────────────────
+const _moduleFields = {};
+let _editingField = null;
+
 function renderFieldDefs(modId, fields) {
+  _moduleFields[modId] = fields.map((f) => ({ key: f.key, label: f.label }));
+  _renderFieldRows(modId);
+}
+
+function _renderFieldRows(modId) {
   const container = document.getElementById(`fields-${modId}`);
   container.innerHTML = "";
+  const fields = _moduleFields[modId] || [];
+  if (fields.length === 0) {
+    container.innerHTML = '<div class="hint" style="padding:4px 0 8px">No fields yet.</div>';
+    return;
+  }
   fields.forEach((f, idx) => {
     const row = document.createElement("div");
-    row.className = "field-def-item";
+    row.className = "field-row";
     row.innerHTML = `
-      <input class="admin-input" placeholder="key (no spaces)" value="${esc(f.key)}" data-idx="${idx}" data-prop="key">
-      <input class="admin-input" placeholder="Label for student" value="${esc(f.label)}" data-idx="${idx}" data-prop="label">
-      <select class="admin-select" data-idx="${idx}" data-prop="type">
-        <option value="text" ${f.type === "text" ? "selected" : ""}>Short text</option>
-        <option value="textarea" ${f.type === "textarea" ? "selected" : ""}>Long text</option>
-      </select>
+      <span class="field-row-key">{${esc(f.key || "…")}}</span>
+      <span class="field-row-label">${esc(f.label || "")}</span>
+      <button class="btn btn-secondary" onclick="openFieldModal(${modId}, ${idx})">Edit</button>
       <button class="btn btn-danger" onclick="removeField(${modId}, ${idx})">✕</button>
     `;
     container.appendChild(row);
@@ -300,45 +315,57 @@ function renderFieldDefs(modId, fields) {
 }
 
 function getFieldDefs(modId) {
-  const container = document.getElementById(`fields-${modId}`);
-  const fields = [];
-  const items = container.querySelectorAll(".field-def-item");
-  items.forEach((item) => {
-    const key = item.querySelector('[data-prop="key"]').value.trim().replace(/\s+/g, "_");
-    const label = item.querySelector('[data-prop="label"]').value.trim();
-    const type = item.querySelector('[data-prop="type"]').value;
-    if (key) fields.push({ key, label: label || key, type });
-  });
-  return fields;
+  return (_moduleFields[modId] || []).filter((f) => f.key);
 }
 
 function addField(modId) {
-  const container = document.getElementById(`fields-${modId}`);
-  const idx = container.querySelectorAll(".field-def-item").length;
-  const row = document.createElement("div");
-  row.className = "field-def-item";
-  row.innerHTML = `
-    <input class="admin-input" placeholder="key" data-idx="${idx}" data-prop="key">
-    <input class="admin-input" placeholder="Label" data-idx="${idx}" data-prop="label">
-    <select class="admin-select" data-idx="${idx}" data-prop="type">
-      <option value="text">Short text</option>
-      <option value="textarea">Long text</option>
-    </select>
-    <button class="btn btn-danger" onclick="removeField(${modId}, ${idx})">✕</button>
-  `;
-  container.appendChild(row);
+  if (!_moduleFields[modId]) _moduleFields[modId] = [];
+  const idx = _moduleFields[modId].length;
+  _moduleFields[modId].push({ key: "", label: "" });
+  _renderFieldRows(modId);
+  openFieldModal(modId, idx, true);
 }
 
 function removeField(modId, idx) {
-  const container = document.getElementById(`fields-${modId}`);
-  const items = container.querySelectorAll(".field-def-item");
-  if (items[idx]) items[idx].remove();
+  (_moduleFields[modId] || []).splice(idx, 1);
+  _renderFieldRows(modId);
+}
+
+function openFieldModal(modId, idx, isNew = false) {
+  const f = (_moduleFields[modId] || [])[idx] || { key: "", label: "" };
+  _editingField = { modId, idx, isNew };
+  document.getElementById("field-modal-title").textContent = isNew ? "New field" : "Edit field";
+  document.getElementById("field-modal-key").value = f.key;
+  document.getElementById("field-modal-label").value = f.label;
+  document.getElementById("field-modal").classList.remove("hidden");
+  setTimeout(() => document.getElementById("field-modal-key").focus(), 50);
+}
+
+function saveFieldModal() {
+  const { modId, idx } = _editingField;
+  const key = document.getElementById("field-modal-key").value.trim().replace(/\s+/g, "_");
+  const label = document.getElementById("field-modal-label").value.trim();
+  if (!key) { alert("Key is required."); return; }
+  _moduleFields[modId][idx] = { key, label: label || key };
+  _renderFieldRows(modId);
+  closeFieldModal();
+}
+
+function closeFieldModal() {
+  const { modId, idx, isNew } = _editingField || {};
+  if (isNew && _moduleFields[modId]?.[idx]?.key === "") {
+    _moduleFields[modId].splice(idx, 1);
+    _renderFieldRows(modId);
+  }
+  document.getElementById("field-modal").classList.add("hidden");
+  _editingField = null;
 }
 
 async function saveModule(modId) {
   await api("PUT", `/api/admin/modules/${modId}`, {
     title: document.getElementById(`mod-title-${modId}`).value.trim(),
     week_number: parseInt(document.getElementById(`mod-week-${modId}`).value, 10) || 0,
+    preamble: document.getElementById(`mod-preamble-${modId}`).value,
     unlocked: document.getElementById(`mod-unlocked-${modId}`).checked,
     field_defs: getFieldDefs(modId),
   });
