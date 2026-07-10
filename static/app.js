@@ -390,21 +390,46 @@ function setThinking(agentId, thinking) {
   }
 }
 
+function firstSentence(text) {
+  const m = text.match(/^.+?[.!?](?:\s|$)/);
+  if (m && m[0].trim().length < text.length - 2) return m[0].trim();
+  const words = text.split(/\s+/);
+  if (words.length > 10) return words.slice(0, 10).join(' ') + '…';
+  return text;
+}
+
+function compressBubble(bubble) {
+  if (bubble.classList.contains('compressed')) return;
+  const full = bubble.dataset.fullText || bubble.textContent;
+  bubble.dataset.fullText = full;
+  bubble.textContent = firstSentence(full);
+  bubble.classList.add('compressed');
+  bubble.title = full;
+  bubble.onclick = () => {
+    if (bubble.classList.contains('compressed')) {
+      bubble.textContent = bubble.dataset.fullText;
+      bubble.classList.remove('compressed');
+    } else {
+      bubble.textContent = firstSentence(bubble.dataset.fullText);
+      bubble.classList.add('compressed');
+    }
+    positionBubbles();
+  };
+}
+
 function showSpeech(agentId, content, options = {}) {
   const { persistent = false } = options;
   const el = document.getElementById(`avatar-${agentId}`);
   if (!el) return;
 
-  if (state.stepMode) {
-    // Step mode: keep earlier bubbles visible; just remove this agent's old bubble.
-    const existing = state.activeBubbles.get(agentId);
-    if (existing) {
-      existing.remove();
-      state.activeBubbles.delete(agentId);
-    }
-  } else {
-    // Realtime: only one speech bubble at a time.
-    clearAllSpeechBubbles();
+  // Compress past speakers' bubbles; remove this agent's previous bubble if any.
+  state.activeBubbles.forEach((b, id) => {
+    if (id !== agentId) compressBubble(b);
+  });
+  const existing = state.activeBubbles.get(agentId);
+  if (existing) {
+    existing.remove();
+    state.activeBubbles.delete(agentId);
   }
 
   document.querySelectorAll(".avatar.speaking").forEach((a) => a.classList.remove("speaking"));
@@ -465,16 +490,14 @@ function showRefereeSpeech(content) {
   // A speech bubble replaces any transient referee warning.
   document.querySelectorAll(".referee-warning").forEach((w) => w.remove());
 
-  if (state.stepMode) {
-    // Remove any existing referee bubble.
-    const existing = state.activeBubbles.get("referee");
-    if (existing) {
-      existing.remove();
-      state.activeBubbles.delete("referee");
-    }
-  } else {
-    // Realtime: only one speech bubble at a time.
-    clearAllSpeechBubbles();
+  // Compress agent bubbles when the referee speaks; remove its own previous bubble.
+  state.activeBubbles.forEach((b, id) => {
+    if (id !== "referee") compressBubble(b);
+  });
+  const existing = state.activeBubbles.get("referee");
+  if (existing) {
+    existing.remove();
+    state.activeBubbles.delete("referee");
   }
 
   document.querySelectorAll(".avatar.speaking").forEach((a) => a.classList.remove("speaking"));
@@ -494,12 +517,6 @@ function showRefereeSpeech(content) {
   requestAnimationFrame(() => {
     positionBubbles();
   });
-}
-
-function clearAllSpeechBubbles() {
-  document.querySelectorAll(".speech-bubble").forEach((b) => b.remove());
-  document.querySelectorAll(".referee-warning").forEach((w) => w.remove());
-  state.activeBubbles.clear();
 }
 
 function positionBubbles() {
@@ -752,8 +769,8 @@ function removeCurrentSpeech() {
   // caused warnings to disappear after only 3s regardless of the banner's timeout.
   const bubble = state.activeBubbles.get(agentId);
   if (bubble) {
-    bubble.remove();
-    state.activeBubbles.delete(agentId);
+    compressBubble(bubble);
+    requestAnimationFrame(() => positionBubbles());
   }
   const el = document.getElementById(`avatar-${agentId}`);
   if (el && state.speaking === agentId) {
