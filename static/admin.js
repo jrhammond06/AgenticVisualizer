@@ -161,6 +161,63 @@ async function deleteStudent(id, name) {
   loadStudents();
 }
 
+// ── Field key palette ─────────────────────────────────────────────────────────
+let _tmplSelStart = 0, _tmplSelEnd = 0;
+
+function _setupTemplateCursorTracking() {
+  const ta = document.getElementById("template-text");
+  if (ta._cursorTracked) return;
+  ta._cursorTracked = true;
+  ta.addEventListener("blur", () => {
+    _tmplSelStart = ta.selectionStart;
+    _tmplSelEnd = ta.selectionEnd;
+  });
+}
+
+function renderFieldKeyPalette(modules) {
+  _setupTemplateCursorTracking();
+  const container = document.getElementById("field-key-palette");
+  const chips = [{ key: "display_name", label: "Student name", builtin: true }];
+  modules.forEach((mod) => {
+    const fields = Array.isArray(mod.field_defs) ? mod.field_defs : JSON.parse(mod.field_defs || "[]");
+    fields.forEach((f) => chips.push({ key: f.key, label: f.label, module: mod.title }));
+  });
+
+  container.innerHTML = "";
+  if (chips.length === 1 && modules.length === 0) {
+    const hint = document.createElement("span");
+    hint.className = "hint";
+    hint.textContent = "Add modules with fields and they'll appear here.";
+    container.appendChild(hint);
+  }
+
+  chips.forEach((chip) => {
+    const el = document.createElement("span");
+    el.className = "field-chip" + (chip.builtin ? " field-chip-builtin" : "");
+    el.textContent = `{${chip.key}}`;
+    el.title = chip.module ? `${chip.module}: ${chip.label}` : chip.label;
+    el.draggable = true;
+    el.addEventListener("dragstart", (e) => {
+      e.dataTransfer.setData("text/plain", `{${chip.key}}`);
+      e.dataTransfer.effectAllowed = "copy";
+    });
+    el.addEventListener("click", () => insertFieldKey(chip.key));
+    container.appendChild(el);
+  });
+}
+
+function insertFieldKey(key) {
+  const ta = document.getElementById("template-text");
+  const token = `{${key}}`;
+  const start = ta === document.activeElement ? ta.selectionStart : _tmplSelStart;
+  const end   = ta === document.activeElement ? ta.selectionEnd   : _tmplSelEnd;
+  ta.value = ta.value.slice(0, start) + token + ta.value.slice(end);
+  const newPos = start + token.length;
+  ta.focus();
+  ta.setSelectionRange(newPos, newPos);
+  _tmplSelStart = _tmplSelEnd = newPos;
+}
+
 // ── FORM TAB ──────────────────────────────────────────────────────────────────
 async function loadFormTab() {
   const classTag = document.getElementById("form-class-filter").value.trim();
@@ -171,7 +228,8 @@ async function loadFormTab() {
 
   document.getElementById("template-text").value = tmpl.template || "";
   renderModulesList(modules, classTag);
-  populatePreviewSelect(classTag);
+  renderFieldKeyPalette(modules);
+  loadCompletionTracker(classTag, modules);
 }
 
 function renderModulesList(modules, classTag) {
@@ -314,24 +372,42 @@ async function saveTemplate() {
   setTimeout(() => { status.textContent = ""; }, 2000);
 }
 
-function populatePreviewSelect(classTag) {
-  const sel = document.getElementById("preview-user-select");
-  sel.innerHTML = '<option value="">— select student —</option>';
-  allUsers.filter((u) => !classTag || u.class_tag === classTag).forEach((u) => {
-    const opt = document.createElement("option");
-    opt.value = u.id;
-    opt.textContent = `${u.display_name} (${u.username})`;
-    sel.appendChild(opt);
-  });
-}
+async function loadCompletionTracker(classTag, modules) {
+  const container = document.getElementById("completion-tracker");
+  if (!classTag || modules.length === 0) {
+    container.innerHTML = "";
+    return;
+  }
+  const profiles = await api("GET", `/api/admin/profiles?class_tag=${encodeURIComponent(classTag)}`);
+  if (profiles.length === 0) {
+    container.innerHTML = '<div class="empty">No students in this class.</div>';
+    return;
+  }
 
-async function loadPreview() {
-  const uid = document.getElementById("preview-user-select").value;
-  if (!uid) return;
-  const data = await api("GET", `/api/admin/template/preview/${uid}`);
-  const box = document.getElementById("preview-output");
-  box.textContent = data.system_prompt || "(empty)";
-  box.style.display = "";
+  const headerCells = modules.map((m) => `<th>${esc(m.title)}</th>`).join("");
+  const rows = profiles.map((p) => {
+    const cells = modules.map((m) => {
+      const fields = Array.isArray(m.field_defs) ? m.field_defs : JSON.parse(m.field_defs || "[]");
+      const filled = fields.filter((f) => {
+        const ans = (p.answers || {})[f.key];
+        return ans && ans.trim() !== "";
+      }).length;
+      const total = fields.length;
+      if (total === 0) return `<td><span class="badge badge-gray">—</span></td>`;
+      const cls = filled === 0 ? "badge-gray" : filled < total ? "badge-yellow" : "badge-green";
+      return `<td><span class="badge ${cls}">${filled}/${total}</span></td>`;
+    }).join("");
+    return `<tr><td><strong>${esc(p.display_name)}</strong></td>${cells}</tr>`;
+  }).join("");
+
+  container.innerHTML = `
+    <div class="section-title" style="margin-top:24px">Completion</div>
+    <div class="admin-card" style="padding:0;overflow-x:auto">
+      <table class="completion-table">
+        <thead><tr><th>Student</th>${headerCells}</tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
 }
 
 // ── RULE SETS TAB ─────────────────────────────────────────────────────────────
@@ -650,8 +726,12 @@ async function confirmLoad() {
 // ── PROFILES TAB ─────────────────────────────────────────────────────────────
 async function loadProfiles() {
   const classTag = document.getElementById("profiles-class-filter").value.trim();
-  const profiles = await api("GET", `/api/admin/profiles?class_tag=${encodeURIComponent(classTag)}`);
   const list = document.getElementById("profiles-list");
+  if (!classTag) {
+    list.innerHTML = '<div class="empty">Select a class above to view profiles.</div>';
+    return;
+  }
+  const profiles = await api("GET", `/api/admin/profiles?class_tag=${encodeURIComponent(classTag)}`);
   list.innerHTML = "";
   if (profiles.length === 0) {
     list.innerHTML = '<div class="empty">No students found.</div>';

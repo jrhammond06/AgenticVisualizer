@@ -70,7 +70,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from sqlmodel import Session as DBSession, select
 
 from database import engine, create_db_and_tables
-from db_models import ClassTagDB, PackageDB, RuleSetDB, User
+from db_models import ClassTagDB, FormModule, FormSubmission, PackageDB, RuleSetDB, SystemPromptTemplate, User
 from auth import hash_password
 
 # Ensure the database file and all tables exist before we try to write to them.
@@ -269,53 +269,111 @@ STUDENTS = [
     {
         "username": "emma",
         "display_name": "Emma",
-        "system_prompt_override": (
-            "You are vegetarian — you don't eat any meat at all: no chicken, hot dogs, "
-            "beef, pepperoni, or fish. Cheese and dairy are completely fine for you. "
-            "You love cheese pizza, pasta, fruit salad, and anything chocolate for dessert. "
-            "You're good at compromise and genuinely care about making sure everyone feels included. "
-            "You really want at least one dessert on the final menu and you'll keep gently pushing for it."
-        ),
+        "answers": {
+            "food_likes": (
+                "Cheese pizza, pasta, fruit salad, and anything chocolate for dessert. "
+                "I really want at least one dessert on the final menu!"
+            ),
+            "food_restrictions": (
+                "I'm vegetarian — I don't eat any meat at all: no chicken, hot dogs, "
+                "beef, pepperoni, or fish. Cheese and dairy are completely fine for me."
+            ),
+            "negotiating_style": (
+                "I'm good at compromise and genuinely care about making sure everyone feels included. "
+                "I'll keep gently pushing for dessert though!"
+            ),
+        },
     },
     {
         "username": "jake",
         "display_name": "Jake",
-        "system_prompt_override": (
-            "You have a serious peanut and tree-nut allergy — even small traces can send you to hospital, "
-            "so you always ask about ingredients. "
-            "You love hot dogs, pepperoni pizza, plain chips, and soda. "
-            "You're enthusiastic and jump into conversations quickly; you can get a little loud. "
-            "You become genuinely anxious if anyone suggests anything nut-related and you'll push back firmly, "
-            "but you trust your friends to look out for you."
-        ),
+        "answers": {
+            "food_likes": "Hot dogs, pepperoni pizza, plain chips, and soda.",
+            "food_restrictions": (
+                "I have a serious peanut and tree-nut allergy — even small traces can send me to hospital, "
+                "so I always ask about ingredients. I get genuinely anxious if anyone suggests anything nut-related."
+            ),
+            "negotiating_style": (
+                "I'm enthusiastic and jump into conversations quickly; I can get a little loud. "
+                "But I trust my friends to look out for me."
+            ),
+        },
     },
     {
         "username": "sofia",
         "display_name": "Sofia",
-        "system_prompt_override": (
-            "You are lactose intolerant — dairy makes you really sick, so you can't have cheese, "
-            "milk, butter, cream, or ice cream. This means regular cheese pizza doesn't work for you. "
-            "You love tacos with salsa and guacamole, veggie sticks with hummus, fresh fruit, and sparkling water. "
-            "You're thoughtful and always check whether a suggestion works for everyone, not just yourself. "
-            "You'll gently point out when something doesn't work for you and offer an alternative straight away."
-        ),
+        "answers": {
+            "food_likes": "Tacos with salsa and guacamole, veggie sticks with hummus, fresh fruit, and sparkling water.",
+            "food_restrictions": (
+                "I'm lactose intolerant — dairy makes me really sick, so I can't have cheese, "
+                "milk, butter, cream, or ice cream. Regular cheese pizza doesn't work for me."
+            ),
+            "negotiating_style": (
+                "I'm thoughtful and always check whether a suggestion works for everyone, not just myself. "
+                "I'll gently point out when something doesn't work for me and offer an alternative straight away."
+            ),
+        },
     },
     {
         "username": "marcus",
         "display_name": "Marcus",
-        "system_prompt_override": (
-            "You're a pretty picky eater — strong flavours, unfamiliar sauces, and weird textures put you off. "
-            "You like plain chicken nuggets, plain chips, plain bread rolls, and apple juice. "
-            "You're not trying to be difficult; new foods just make you uneasy. "
-            "You can be talked into trying something if your friends are patient and enthusiastic about it, "
-            "but you need a bit of convincing. You push back with 'ew' or 'that sounds gross' but you do "
-            "want everyone to have a good time."
-        ),
+        "answers": {
+            "food_likes": "Plain chicken nuggets, plain chips, plain bread rolls, and apple juice.",
+            "food_restrictions": (
+                "No allergies, but I'm a pretty picky eater — strong flavours, unfamiliar sauces, "
+                "and weird textures put me off. New foods just make me uneasy."
+            ),
+            "negotiating_style": (
+                "I can be talked into trying something if my friends are patient and enthusiastic, "
+                "but I need a bit of convincing. I do want everyone to have a good time!"
+            ),
+        },
     },
 ]
 
 
-# ── 7. WRITE TO DATABASE ──────────────────────────────────────────────────────
+# ── 7. FORM MODULES AND SYSTEM PROMPT TEMPLATE ───────────────────────────────
+#
+# The form is the multi-week questionnaire students fill out to build their
+# agent profiles. Each module is a section of the form (released week by week).
+# The system prompt template combines all answers into a coherent personality
+# block that gets injected into the agent's system prompt as {system_prompt}.
+#
+# For this demo we use two modules and a simple template. In a real class you'd
+# add more modules as the course progresses and unlock them gradually.
+
+FORM_MODULES = [
+    {
+        "title": "Week 1: Food Preferences",
+        "week_number": 1,
+        "field_defs": [
+            {"key": "food_likes", "label": "What foods do you love or want at the party?", "type": "textarea"},
+            {"key": "food_restrictions", "label": "Any allergies or foods you can't eat? Describe them.", "type": "textarea"},
+        ],
+        "unlocked": True,
+    },
+    {
+        "title": "Week 2: Your Negotiating Style",
+        "week_number": 2,
+        "field_defs": [
+            {"key": "negotiating_style", "label": "How do you usually handle group decisions? Flexible, firm, or somewhere in between?", "type": "textarea"},
+        ],
+        "unlocked": True,
+    },
+]
+
+# The system prompt template turns form answers into the agent's personality
+# block. Use {display_name} and any {field_key} defined in the modules above.
+SYSTEM_PROMPT_TEMPLATE = """\
+Foods I love: {food_likes}
+
+My dietary situation: {food_restrictions}
+
+How I approach group decisions: {negotiating_style}\
+"""
+
+
+# ── 8. WRITE TO DATABASE ──────────────────────────────────────────────────────
 #
 # Everything below is database insertion. The pattern throughout:
 #   - Check if the row already exists (by a unique field like name or tag).
@@ -391,26 +449,86 @@ with DBSession(engine) as db:
     else:
         print(f"  Package already exists: {existing_pkg.name} (id={existing_pkg.id})")
 
-    # --- Students ---
-    # Each student gets a login account and a manual system_prompt_override.
-    # In a real class, the override would be empty and the system prompt would
-    # be generated from form answers + the class's system prompt template.
-    # Here we skip the form entirely and write the personality text directly.
+    # --- Students + form submissions ---
+    # Each student gets a login account and a set of form answers. The system
+    # prompt is rendered at load time from answers + the class template (no
+    # manual override needed). This mirrors the real-class workflow where
+    # students fill out their own forms.
+    student_ids = {}
     for s in STUDENTS:
         existing_user = db.exec(
             select(User).where(User.username == s["username"])
         ).first()
         if not existing_user:
-            db.add(User(
+            user = User(
                 username=s["username"],
                 password_hash=hash_password("password"),
                 display_name=s["display_name"],
                 class_tag=CLASS_TAG,
-                system_prompt_override=s["system_prompt_override"],
-            ))
+                system_prompt_override=None,
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
             print(f"  Created student: {s['display_name']} (@{s['username']})")
         else:
-            print(f"  Student already exists: {s['display_name']} (@{s['username']})")
+            user = existing_user
+            if user.system_prompt_override is not None:
+                user.system_prompt_override = None
+                db.add(user)
+                db.commit()
+                print(f"  Cleared override for: {s['display_name']} (@{s['username']})")
+            else:
+                print(f"  Student already exists: {s['display_name']} (@{s['username']})")
+        student_ids[s["username"]] = user.id
+
+    # Form submissions — one row per student, keyed by user_id.
+    for s in STUDENTS:
+        uid = student_ids[s["username"]]
+        existing_sub = db.exec(
+            select(FormSubmission).where(FormSubmission.user_id == uid)
+        ).first()
+        if not existing_sub:
+            db.add(FormSubmission(user_id=uid, answers=json.dumps(s["answers"])))
+            print(f"  Created form submission for: {s['display_name']}")
+        else:
+            print(f"  Form submission already exists for: {s['display_name']}")
+
+    db.commit()
+
+    # --- Form modules ---
+    # One module per week; students see all unlocked modules on /form.
+    for m in FORM_MODULES:
+        existing_mod = db.exec(
+            select(FormModule).where(
+                FormModule.class_tag == CLASS_TAG,
+                FormModule.title == m["title"],
+            )
+        ).first()
+        if not existing_mod:
+            db.add(FormModule(
+                class_tag=CLASS_TAG,
+                title=m["title"],
+                week_number=m["week_number"],
+                field_defs=json.dumps(m["field_defs"]),
+                unlocked=m["unlocked"],
+            ))
+            print(f"  Created form module: {m['title']}")
+        else:
+            print(f"  Form module already exists: {m['title']}")
+
+    db.commit()
+
+    # --- System prompt template ---
+    # One template per class; renders {field_key} placeholders from form answers.
+    existing_tmpl = db.exec(
+        select(SystemPromptTemplate).where(SystemPromptTemplate.class_tag == CLASS_TAG)
+    ).first()
+    if not existing_tmpl:
+        db.add(SystemPromptTemplate(class_tag=CLASS_TAG, template=SYSTEM_PROMPT_TEMPLATE))
+        print(f"  Created system prompt template for class: {CLASS_TAG}")
+    else:
+        print(f"  System prompt template already exists for class: {CLASS_TAG}")
 
     db.commit()
 
