@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from typing import List, Literal, Optional
 from uuid import uuid4
 
-from config import MAX_TURNS_DEFAULT, MIN_TURNS_DEFAULT
+from config import MAX_ROUNDS_DEFAULT, MIN_ROUNDS_DEFAULT
 
 
 class Agent(BaseModel):
@@ -20,8 +20,8 @@ class Message(BaseModel):
 
 
 class RuleSet(BaseModel):
-    max_turns: int = MAX_TURNS_DEFAULT
-    min_turns: int = MIN_TURNS_DEFAULT
+    max_rounds: int = MAX_ROUNDS_DEFAULT
+    min_rounds: int = MIN_ROUNDS_DEFAULT
     turn_order: Literal["sequential", "random", "simultaneous_proposal"] = "sequential"
     mode: Literal["realtime", "auto_pause", "step_by_step"] = "realtime"
     agent_instructions: str = ""
@@ -42,7 +42,6 @@ class RefereeEvaluation(BaseModel):
     warnings: List[str] = []
     consensus_reached: bool = False
     consensus_proposal: str = ""
-    proposal_details: dict = Field(default_factory=dict)
     status_summary: str = ""
     checklist: dict = Field(default_factory=dict)
 

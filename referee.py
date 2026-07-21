@@ -46,12 +46,11 @@ Your job:
 Return ONLY a JSON object with exactly these keys:
 - "warnings": list of strings (empty if nothing is wrong)
 - "consensus_reached": boolean
-- "consensus_proposal": string (a plain-language summary of the agreed proposal if consensus_reached is true, otherwise empty or best current guess)
-- "proposal_details": object (optional structured details, e.g., {{"budget": 1200, "owner": "Engineering"}}; empty object if none)
+- "consensus_proposal": string (plain-language summary if consensus reached, otherwise empty string)
 - "status_summary": one short sentence summarizing the state of the negotiation
 - "checklist": object with one entry per rule of engagement keyed by rule name: {checklist_example!r}
 
-Be concise."""
+Your entire response must fit within {config.REFEREE_MAX_TOKENS} tokens. Keep checklist notes to one short phrase each. Be concise."""
 
     def _format_agents(self, agents: List[Agent], history_text: str) -> str:
         agent_names = [f"- {agent.name}" for agent in agents]
@@ -102,5 +101,4 @@ Be concise."""
             warnings=[],
             consensus_reached=False,
             status_summary="The Referee couldn't evaluate the negotiation clearly.",
-            checklist={},
         )

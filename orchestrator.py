@@ -61,18 +61,26 @@ async def run_round(session: Session, broadcast):
             await _run_step_by_step(session, actors, referee, broadcast)
         else:
             await _run_realtime(session, actors, referee, broadcast, resuming)
+    except asyncio.CancelledError:
+        pass  # Task was cancelled by stop or new-round start; status already set by caller.
     except Exception as e:
         await broadcast({"type": "error", "message": f"Round failed: {str(e)}"})
-
     finally:
-        # Only change status if the round wasn't manually stopped or auto-paused.
+        # Only update status if the round completed normally (not stopped or cancelled).
         if session.status == "running":
             session.status = "idle"
-            await broadcast({"type": "status", "state": "idle"})
+            try:
+                await broadcast({"type": "status", "state": "idle"})
+            except Exception:
+                pass
 
 
 async def _run_realtime(session: Session, actors: dict, referee: Referee, broadcast, resuming: bool):
     """Original real-time flow."""
+    n_agents = len(session.agents)
+    max_turns = session.rules.max_rounds * n_agents
+    min_turns = session.rules.min_rounds * n_agents
+
     # Optional simultaneous proposal phase only on a fresh start.
     if not resuming and session.rules.turn_order == "simultaneous_proposal":
         session.turn += 1
@@ -89,12 +97,13 @@ async def _run_realtime(session: Session, actors: dict, referee: Referee, broadc
             session.history.append(Message(agent_id=agent_id, content=content, turn=session.turn))
 
     # Sequential reaction phase
-    while session.turn < session.rules.max_turns and session.status == "running":
+    did_final_ref_check = False
+    while session.turn < max_turns and session.status == "running":
         session.turn += 1
         speaker = _pick_speaker(session, session.turn)
 
         await broadcast({"type": "agent_thinking", "agent_id": speaker.id})
-        content = await actors[speaker.id].generate_reply(
+        content, summary = await actors[speaker.id].generate_reply(
             session.topic,
             _format_history(session, actors),
             session.rules,
@@ -105,29 +114,37 @@ async def _run_realtime(session: Session, actors: dict, referee: Referee, broadc
             "type": "agent_speak",
             "agent_id": speaker.id,
             "content": content,
+            "summary": summary,
             "turn": session.turn,
         })
+        await asyncio.sleep(3)
 
-        # Let the Referee check in after every full cycle (every agent has spoken once),
-        # but only after the minimum number of turns has passed.
-        cycle_complete = session.turn >= len(session.agents) and session.turn % len(session.agents) == 0
-        if cycle_complete and session.turn >= session.rules.min_turns:
+        cycle_complete = session.turn >= n_agents and session.turn % n_agents == 0
+        is_final_cycle = cycle_complete and session.turn >= max_turns
+        if cycle_complete and session.turn >= min_turns:
             await broadcast({"type": "referee_thinking"})
             session.last_evaluation = await _referee_check_queued(session, actors, referee)
+            did_final_ref_check = is_final_cycle
+
+            if is_final_cycle:
+                await broadcast(_referee_event(session.last_evaluation))
+                await asyncio.sleep(4)
+                break
+
             await broadcast(_referee_event(session.last_evaluation))
+            await asyncio.sleep(3)
             if session.last_evaluation and session.last_evaluation.consensus_reached:
                 session.consensus_reached = True
                 break
 
-            # Auto-pause after interim referee checks so the teacher can review.
-            # Don't pause if this is the last possible cycle; let the round finish.
-            if session.rules.mode == "auto_pause" and session.turn < session.rules.max_turns:
+            # Auto-pause after interim rounds so the teacher can review.
+            if session.rules.mode == "auto_pause":
                 session.status = "paused"
                 await broadcast({"type": "status", "state": "paused"})
                 break
 
-    # Final referee evaluation if the round ran to completion without consensus.
-    if session.status == "running" and not session.consensus_reached:
+    # Final referee evaluation only if we haven't already done it at cycle boundary.
+    if session.status == "running" and not session.consensus_reached and not did_final_ref_check:
         await broadcast({"type": "referee_thinking"})
         session.last_evaluation = await _referee_check_queued(session, actors, referee)
         await broadcast(_referee_event(session.last_evaluation))
@@ -139,6 +156,10 @@ async def _run_realtime(session: Session, actors: dict, referee: Referee, broadc
 
 async def _run_step_by_step(session: Session, actors: dict, referee: Referee, broadcast):
     """Step-by-step flow: generate a full circle, queue it, then wait for Next clicks."""
+    n_agents = len(session.agents)
+    max_turns = session.rules.max_rounds * n_agents
+    min_turns = session.rules.min_rounds * n_agents
+
     # Optional simultaneous proposal opening on a fresh start.
     if session.rules.turn_order == "simultaneous_proposal" and session.turn == 0:
         await broadcast({"type": "phase", "phase": "proposals", "message": "Everyone is making an opening proposal..."})
@@ -152,20 +173,21 @@ async def _run_step_by_step(session: Session, actors: dict, referee: Referee, br
         for result in results:
             if isinstance(result, Exception):
                 continue
-            agent_id, content = result
+            agent_id, content, summary = result
             session.history.append(Message(agent_id=agent_id, content=content, turn=session.turn))
             opening_events.append({
                 "type": "agent_speak",
                 "agent_id": agent_id,
                 "content": content,
+                "summary": summary,
                 "turn": session.turn,
             })
 
         if session.status != "running":
             return
 
-        # The opening counts as a full circle, so include a referee evaluation.
-        if session.turn >= session.rules.min_turns:
+        is_final = session.turn >= max_turns
+        if session.turn >= min_turns:
             await broadcast({"type": "referee_generating", "done": False})
             evaluation = await _referee_check_queued(session, actors, referee)
             await broadcast({"type": "referee_generating", "done": True})
@@ -173,24 +195,26 @@ async def _run_step_by_step(session: Session, actors: dict, referee: Referee, br
             evaluation = None
         if evaluation:
             session.last_evaluation = evaluation
-            opening_events.append(_referee_event(evaluation))
+            if not is_final:
+                opening_events.append(_referee_event(evaluation))
             if evaluation.consensus_reached:
                 session.consensus_reached = True
 
         await _play_queue(session, opening_events, broadcast)
-        if session.consensus_reached:
+        if session.consensus_reached or is_final:
+            if session.status == "running":
+                await _broadcast_outcome(session, actors, session.last_evaluation, broadcast)
             return
 
     # Main loop: generate one full circle at a time, then play it back step by step.
     while session.status == "running":
-        # We need enough remaining turns for every agent to speak once.
-        if session.turn >= session.rules.max_turns:
+        if session.turn >= max_turns:
             break
-        if session.turn + len(session.agents) > session.rules.max_turns:
+        if session.turn + n_agents > max_turns:
             break
 
         events = []
-        circle_number = (session.turn // len(session.agents)) + 1
+        circle_number = (session.turn // n_agents) + 1
         await broadcast({"type": "phase", "phase": "circle", "message": f"Generating circle {circle_number}..."})
         speaker_order = _circle_speaker_order(session)
 
@@ -199,7 +223,7 @@ async def _run_step_by_step(session: Session, actors: dict, referee: Referee, br
                 break
             session.turn += 1
             await broadcast({"type": "agent_generating", "agent_id": speaker.id, "done": False})
-            content = await actors[speaker.id].generate_reply(
+            content, summary = await actors[speaker.id].generate_reply(
                 session.topic,
                 _format_history(session, actors),
                 session.rules,
@@ -211,13 +235,15 @@ async def _run_step_by_step(session: Session, actors: dict, referee: Referee, br
                 "type": "agent_speak",
                 "agent_id": speaker.id,
                 "content": content,
+                "summary": summary,
                 "turn": session.turn,
             })
 
         if session.status != "running":
             break
 
-        if session.turn >= session.rules.min_turns:
+        is_final = session.turn >= max_turns
+        if session.turn >= min_turns:
             await broadcast({"type": "referee_generating", "done": False})
             evaluation = await _referee_check_queued(session, actors, referee)
             await broadcast({"type": "referee_generating", "done": True})
@@ -225,12 +251,13 @@ async def _run_step_by_step(session: Session, actors: dict, referee: Referee, br
             evaluation = None
         if evaluation:
             session.last_evaluation = evaluation
-            events.append(_referee_event(evaluation))
+            if not is_final:
+                events.append(_referee_event(evaluation))
             if evaluation.consensus_reached:
                 session.consensus_reached = True
 
         await _play_queue(session, events, broadcast)
-        if session.consensus_reached:
+        if session.consensus_reached or is_final:
             break
 
     # Broadcast the final outcome once the round is complete.
@@ -266,11 +293,17 @@ async def _play_queue(session: Session, events: list, broadcast):
             if evaluation.get("consensus_reached"):
                 session.consensus_reached = True
 
-    # Full circle revealed: clear the board and prepare for the next circle.
+    # Full circle revealed. Hold here so the teacher can read the final state
+    # (compressed agent chips + referee bubble), then wait for one more Next
+    # click before clearing for the next circle.
     if session.status == "running":
-        await broadcast({"type": "clear_bubbles"})
-        session.step_queue = []
-        session.step_index = 0
+        _clear_step_signal()
+        await _step_event.wait()
+        _clear_step_signal()
+        if session.status == "running":
+            await broadcast({"type": "clear_bubbles"})
+    session.step_queue = []
+    session.step_index = 0
 
 
 def _circle_speaker_order(session: Session) -> list:
@@ -292,11 +325,12 @@ async def _agent_propose(
     rules_of_engagement,
 ):
     await broadcast({"type": "agent_thinking", "agent_id": agent.id})
-    content = await actor.generate_reply(session.topic, "", session.rules, rules_of_engagement)
+    content, summary = await actor.generate_reply(session.topic, "", session.rules, rules_of_engagement)
     await broadcast({
         "type": "agent_speak",
         "agent_id": agent.id,
         "content": content,
+        "summary": summary,
         "turn": turn,
     })
     return agent.id, content
@@ -304,18 +338,18 @@ async def _agent_propose(
 
 async def _agent_propose_queued(agent: AgentModel, actor: AgentActor, session: Session):
     """Generate a simultaneous opening proposal without broadcasting it immediately."""
-    content = await actor.generate_reply(session.topic, "", session.rules, session.rules_of_engagement)
-    return agent.id, content
+    content, summary = await actor.generate_reply(session.topic, "", session.rules, session.rules_of_engagement)
+    return agent.id, content, summary
 
 
 async def _agent_propose_queued_with_indicator(agent: AgentModel, actor: AgentActor, session: Session, broadcast):
     """Generate a simultaneous opening proposal and show a progress indicator."""
     await broadcast({"type": "agent_generating", "agent_id": agent.id, "done": False})
     try:
-        content = await actor.generate_reply(session.topic, "", session.rules, session.rules_of_engagement)
+        content, summary = await actor.generate_reply(session.topic, "", session.rules, session.rules_of_engagement)
     finally:
         await broadcast({"type": "agent_generating", "agent_id": agent.id, "done": True})
-    return agent.id, content
+    return agent.id, content, summary
 
 
 def _pick_speaker(session: Session, turn: int) -> AgentModel:
@@ -347,9 +381,6 @@ async def _referee_check_queued(session: Session, actors: dict, referee: Referee
         referee_lines.extend(f"- {w}" for w in evaluation.warnings)
     if evaluation.consensus_reached:
         referee_lines.append(f"Consensus proposal: {evaluation.consensus_proposal}")
-        details = evaluation.proposal_details
-        if details:
-            referee_lines.append(f"Proposal details: {details}")
     session.history.append(Message(agent_id="referee", content="\n".join(referee_lines), turn=session.turn))
 
     return evaluation

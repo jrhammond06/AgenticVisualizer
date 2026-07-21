@@ -1,3 +1,4 @@
+import re
 from typing import List
 
 from models import Agent as AgentModel, RuleOfEngagement, RuleSet
@@ -5,13 +6,18 @@ import config
 import llm
 
 _DEFAULT_SPEAKING_INSTRUCTIONS = """Speaking rules:
-- Reply in 1 or 2 short sentences only.
 - Stay in character and advocate for your goal, but be willing to compromise if it makes sense.
 - Keep the rules of engagement in mind when making or evaluating proposals.
 - If the Referee says the group is violating a rule, help fix it — do not ignore the warning.
 - Speak directly to the other agents by name when relevant.
 - Do not use lists, bullet points, or long explanations.
 - Be clear, respectful, and concise."""
+
+# Appended to every system prompt regardless of rule set overrides.
+_POINT_INSTRUCTION = """
+Output format (always required):
+- Begin your reply with exactly this format: POINT: [your single most important takeaway — include any key qualifier or caveat, max 10 words] | [your full reply in 1–2 sentences]
+- Example: POINT: Open to pizza, but need dairy-free option | Pizza works for me as long as we get a dairy-free alternative — I'm lactose-intolerant, so that's a hard requirement."""
 
 _DEFAULT_TEMPLATE = """You are {name}, a participant in a managed debate.
 
@@ -52,7 +58,8 @@ class Agent:
         self, topic: str, rules: RuleSet, rules_of_engagement: List[RuleOfEngagement]
     ) -> str:
         rules_text = self._format_rules(rules_of_engagement)
-        speaking_instructions = rules.agent_instructions.strip() or _DEFAULT_SPEAKING_INSTRUCTIONS
+        base_instructions = rules.agent_instructions.strip() or _DEFAULT_SPEAKING_INSTRUCTIONS
+        speaking_instructions = base_instructions + _POINT_INSTRUCTION
         template = self.prompt_template.strip() or _DEFAULT_TEMPLATE
         ctx = _SafeDict(
             name=self.model.name,
@@ -73,7 +80,8 @@ class Agent:
         history_text: str,
         rules: RuleSet,
         rules_of_engagement: List[RuleOfEngagement],
-    ) -> str:
+    ) -> tuple[str, str]:
+        """Return (content, summary). summary is the POINT chip text; content is the full reply."""
         system_content = self._build_system_prompt(topic, rules, rules_of_engagement)
 
         user_parts = [f"Topic: {topic}"]
@@ -90,4 +98,12 @@ class Agent:
 
         reply = await llm.chat_completion(messages, temperature=0.8, max_tokens=config.AGENT_MAX_TOKENS)
         reply = reply.strip('"').strip("'").strip()
-        return reply
+        return _parse_reply(reply)
+
+
+def _parse_reply(reply: str) -> tuple[str, str]:
+    """Split 'POINT: X | full reply' into (full_reply, summary). Falls back to (reply, '')."""
+    m = re.search(r'POINT:\s*(.+?)\s*\|\s*(.+)', reply, re.DOTALL | re.IGNORECASE)
+    if m:
+        return m.group(2).strip(), m.group(1).strip()
+    return reply, ''

@@ -36,6 +36,17 @@ session = Session(topic="Load a package from the Admin page to begin.")
 _run_buffer: dict = {"active": False, "id": None, "events": [], "started_at": None,
                      "package_id": None, "package_name": "", "class_tag": "", "roster_ids": []}
 
+# Reference to the active round task so it can be cancelled on stop/restart.
+_round_task: asyncio.Task | None = None
+
+
+def _cancel_round() -> None:
+    """Cancel the active round task if one is running."""
+    global _round_task
+    if _round_task and not _round_task.done():
+        _round_task.cancel()
+    _round_task = None
+
 
 # ── System-prompt rendering ───────────────────────────────────────────────────
 
@@ -784,6 +795,7 @@ async def reset_session_route(request: Request):
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    global _round_task
     user = websocket.session.get("user") if hasattr(websocket, "session") else None
     if not user or user.get("role") != "admin":
         await websocket.close(code=4003)
@@ -805,12 +817,14 @@ async def websocket_endpoint(websocket: WebSocket):
                 if len(session.agents) < 2:
                     await websocket.send_json({"type": "error", "message": "Need at least 2 agents."})
                     continue
+                _cancel_round()  # kill any zombie task from a previous run
                 _start_run()
-                asyncio.create_task(run_round(session, manager.broadcast))
+                _round_task = asyncio.create_task(run_round(session, manager.broadcast))
 
             elif msg_type == "stop_round":
                 if session.status == "running":
                     session.status = "idle"
+                    _cancel_round()
                     await manager.broadcast({"type": "status", "state": "idle"})
 
             elif msg_type == "next_step":

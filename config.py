@@ -32,14 +32,14 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 SITE_URL = os.getenv("SITE_URL", "http://localhost:8000")
 SITE_NAME = os.getenv("SITE_NAME", "AgenticVisualizer")
 
-MAX_TURNS_DEFAULT = int(os.getenv("MAX_TURNS_DEFAULT", "8"))
-MIN_TURNS_DEFAULT = int(os.getenv("MIN_TURNS_DEFAULT", "2"))
+MAX_ROUNDS_DEFAULT = int(os.getenv("MAX_ROUNDS_DEFAULT", "3"))
+MIN_ROUNDS_DEFAULT = int(os.getenv("MIN_ROUNDS_DEFAULT", "1"))
 REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", "25.0"))
 
 # Token budgets for LLM calls. Increase these if you use a reasoning model, because
 # reasoning tokens count against the same budget as the final answer.
-AGENT_MAX_TOKENS = int(os.getenv("AGENT_MAX_TOKENS", "120"))
-REFEREE_MAX_TOKENS = int(os.getenv("REFEREE_MAX_TOKENS", "400"))
+AGENT_MAX_TOKENS = int(os.getenv("AGENT_MAX_TOKENS", "150"))
+REFEREE_MAX_TOKENS = int(os.getenv("REFEREE_MAX_TOKENS", "1200"))
 
 logger.info(
     "Config loaded: base_url=%s model=%s referee_model=%s api_key=%s timeout=%s agent_tokens=%s referee_tokens=%s",

@@ -2,20 +2,17 @@ const state = {
   session: null,
   ws: null,
   thinking: new Set(),
-  generating: new Set(), // agent_ids with an active LLM call in step mode
-  speaking: null, // agent_id currently speaking
+  generating: new Set(),
+  speaking: null,
   lastSpeaker: null,
-  transcripts: {}, // agent_id -> list of messages
-  refereeEvaluations: [], // list of structured evaluations
+  transcripts: {},
+  refereeEvaluations: [],
   lastStatus: "idle",
   stepMode: false,
   circleReady: false,
-  activeBubbles: new Map(), // agentId -> bubble element
-  speechQueue: [], // realtime speech events waiting to be displayed
-  currentSpeech: null, // currently displayed speech event in realtime
-  speechTimer: null, // timer enforcing minimum display time
-  pendingOutcome: null, // round_over message held until speech queue empties
-  pendingRefereePopup: false, // referee_popup flag held until speech queue empties
+  activeBubbles: new Map(),
+  pendingRefereePopup: false,
+  cycleJustEnded: false,
 };
 
 const avatarPool = ["🤖", "🐶", "🐱", "🦊", "🐼", "🐨", "🦁", "🐯", "🐷", "🐸", "🐙", "🦄"];
@@ -24,8 +21,8 @@ const avatarPool = ["🤖", "🐶", "🐱", "🦊", "🐼", "🐨", "🦁", "�
 const els = {
   topicDisplay: document.getElementById("topic-display"),
   turnOrder: document.getElementById("turn-order"),
-  maxTurns: document.getElementById("max-turns"),
-  minTurns: document.getElementById("min-turns"),
+  maxRounds: document.getElementById("max-rounds"),
+  minRounds: document.getElementById("min-rounds"),
   modeSelect: document.getElementById("mode-select"),
   agentsList: document.getElementById("agents-list"),
   avatarsContainer: document.getElementById("avatars-container"),
@@ -97,6 +94,7 @@ function handleMessage(msg) {
     case "round_started":
       clearBubbles();
       hideOutcome();
+      hideTranscriptModal();
       clearTranscripts();
       state.circleReady = false;
       log("🎬 Round started");
@@ -117,18 +115,19 @@ function handleMessage(msg) {
       setStatus("running");
       break;
     case "referee_evaluation_bubble":
-      if (state.stepMode) {
-        showRefereeMessage(msg.content, msg.evaluation);
-      } else {
-        enqueueSpeech("referee", msg.content, { evaluation: msg.evaluation });
-      }
       pushRefereeEvaluation(msg.evaluation);
+      if (state.stepMode) {
+        showRefereeEvaluations(false);
+      } else {
+        showRefereeMessage(msg.content, msg.evaluation);
+      }
       log(`🧐 Referee: ${msg.content}`);
       break;
     case "phase":
       log(`📢 ${msg.message}`);
       break;
     case "agent_thinking":
+      if (state.cycleJustEnded) clearBubbles();
       setThinking(msg.agent_id, true);
       break;
     case "agent_generating":
@@ -139,17 +138,13 @@ function handleMessage(msg) {
       break;
     case "agent_speak":
       setThinking(msg.agent_id, false);
-      // A new agent taking focus should clear any lingering referee warning toast.
       document.querySelectorAll(".referee-warning").forEach((w) => w.remove());
-      if (state.stepMode) {
-        showSpeech(msg.agent_id, msg.content, { persistent: true });
-      } else {
-        enqueueSpeech(msg.agent_id, msg.content);
-      }
+      showSpeech(msg.agent_id, msg.content, { persistent: true, summary: msg.summary });
       addTranscript(msg.agent_id, msg.content);
       log(`💬 ${getAgentName(msg.agent_id)}: ${msg.content}`);
       break;
     case "referee_thinking":
+      state.cycleJustEnded = true;
       log("🧐 Referee is evaluating...");
       break;
     case "referee_warning":
@@ -161,8 +156,7 @@ function handleMessage(msg) {
       break;
     case "round_over":
       pushRefereeEvaluation(msg.evaluation);
-      state.pendingOutcome = msg;
-      tryShowDeferred();
+      endRound();
       log(msg.consensus_reached ? `✅ Outcome: ${msg.outcome}` : `⏸ No consensus: ${msg.outcome}`);
       break;
     case "error":
@@ -179,8 +173,8 @@ function loadSession(data) {
   state.speaking = null;
 
   if (document.activeElement !== els.turnOrder) els.turnOrder.value = data.rules.turn_order;
-  if (document.activeElement !== els.maxTurns) els.maxTurns.value = data.rules.max_turns;
-  if (document.activeElement !== els.minTurns) els.minTurns.value = data.rules.min_turns;
+  if (document.activeElement !== els.maxRounds) els.maxRounds.value = data.rules.max_rounds;
+  if (document.activeElement !== els.minRounds) els.minRounds.value = data.rules.min_rounds;
   if (document.activeElement !== els.modeSelect) els.modeSelect.value = data.rules.mode || "realtime";
 
   state.stepMode = (data.rules.mode || "realtime") === "step_by_step";
@@ -402,7 +396,7 @@ function compressBubble(bubble) {
   if (bubble.classList.contains('compressed')) return;
   const full = bubble.dataset.fullText || bubble.textContent;
   bubble.dataset.fullText = full;
-  bubble.textContent = firstSentence(full);
+  bubble.textContent = bubble.dataset.summary || firstSentence(full);
   bubble.classList.add('compressed');
   bubble.title = full;
   bubble.onclick = () => {
@@ -410,7 +404,7 @@ function compressBubble(bubble) {
       bubble.textContent = bubble.dataset.fullText;
       bubble.classList.remove('compressed');
     } else {
-      bubble.textContent = firstSentence(bubble.dataset.fullText);
+      bubble.textContent = bubble.dataset.summary || firstSentence(bubble.dataset.fullText);
       bubble.classList.add('compressed');
     }
     positionBubbles();
@@ -418,7 +412,7 @@ function compressBubble(bubble) {
 }
 
 function showSpeech(agentId, content, options = {}) {
-  const { persistent = false } = options;
+  const { persistent = false, summary = '' } = options;
   const el = document.getElementById(`avatar-${agentId}`);
   if (!el) return;
 
@@ -442,6 +436,7 @@ function showSpeech(agentId, content, options = {}) {
   bubble.className = "speech-bubble";
   bubble.textContent = content;
   bubble.dataset.agentId = agentId;
+  if (summary) bubble.dataset.summary = summary;
   els.avatarsContainer.appendChild(bubble);
 
   state.activeBubbles.set(agentId, bubble);
@@ -679,137 +674,31 @@ function rectsOverlap(a, b) {
 }
 
 function clearBubbles() {
-  document.querySelectorAll(".speech-bubble").forEach((b) => b.remove());
+  els.avatarsContainer.innerHTML = "";
+  renderAvatars();
   document.querySelectorAll(".referee-warning").forEach((w) => w.remove());
-  document.querySelectorAll(".avatar.speaking").forEach((a) => a.classList.remove("speaking"));
-  document.querySelectorAll(".thinking-bubble").forEach((b) => b.remove());
-  document.querySelectorAll(".avatar.thinking").forEach((a) => a.classList.remove("thinking"));
-  clearGenerating();
   state.thinking.clear();
   state.speaking = null;
   state.activeBubbles.clear();
-  state.speechQueue = [];
-  state.currentSpeech = null;
-  state.pendingOutcome = null;
   state.pendingRefereePopup = false;
-  if (state.speechTimer) {
-    clearTimeout(state.speechTimer);
-    state.speechTimer = null;
-  }
+  state.cycleJustEnded = false;
+  clearGenerating();
 }
 
-function enqueueSpeech(agentId, content, options = {}) {
-  state.speechQueue.push({ agentId, content, options });
-  processSpeechQueue();
-}
-
-function processSpeechQueue() {
-  if (state.currentSpeech) {
-    const elapsed = Date.now() - state.currentSpeech.shownAt;
-    const duration = state.currentSpeech.duration || 5000;
-    if (elapsed >= duration && state.speechQueue.length > 0) {
-      advanceSpeech();
-    }
-    tryShowDeferred();
-    return;
+function endRound() {
+  els.avatarsContainer.innerHTML = "";
+  renderAvatars();
+  document.querySelectorAll(".referee-warning").forEach((w) => w.remove());
+  state.speaking = null;
+  state.activeBubbles.clear();
+  clearGenerating();
+  hideOutcome();
+  if (els.transcriptModal.classList.contains("hidden")) {
+    showRefereeEvaluations(true);
   }
-
-  if (state.speechQueue.length === 0) {
-    tryShowDeferred();
-    return;
-  }
-
-  const next = state.speechQueue.shift();
-  displaySpeech(next.agentId, next.content, next.options);
-}
-
-function displaySpeech(agentId, content, options = {}) {
-  if (agentId === "referee") {
-    showRefereeMessage(content, options.evaluation);
-  } else {
-    showSpeech(agentId, content, { persistent: true });
-  }
-  // When the referee shows a warning banner, hold the slot as long as the banner
-  // lives (8s) so the queue doesn't advance while the warning is still on screen.
-  // For a plain status summary (no warnings), 4s is enough to read.
-  let duration = 5000;
-  if (agentId === "referee") {
-    const hasWarnings = (options.evaluation?.warnings?.length ?? 0) > 0;
-    duration = hasWarnings ? 8000 : 4000;
-  }
-  state.currentSpeech = { agentId, content, shownAt: Date.now(), duration };
-  if (state.speechTimer) {
-    clearTimeout(state.speechTimer);
-  }
-  state.speechTimer = setTimeout(() => {
-    state.speechTimer = null;
-    onMinDisplayTimeElapsed();
-  }, duration);
-}
-
-function onMinDisplayTimeElapsed() {
-  if (state.speechQueue.length > 0) {
-    advanceSpeech();
-  }
-  // If the queue is empty, keep the current bubble until the next response arrives.
-  tryShowDeferred();
-}
-
-function advanceSpeech() {
-  if (!state.currentSpeech) return;
-  removeCurrentSpeech();
-  processSpeechQueue();
-}
-
-function removeCurrentSpeech() {
-  if (!state.currentSpeech) return;
-  const { agentId } = state.currentSpeech;
-  // Do NOT remove .referee-warning here — the banner has its own 8s timer set in
-  // showRefereeWarning and should outlive the speech queue slot. Removing it here
-  // caused warnings to disappear after only 3s regardless of the banner's timeout.
-  const bubble = state.activeBubbles.get(agentId);
-  if (bubble) {
-    compressBubble(bubble);
-    requestAnimationFrame(() => positionBubbles());
-  }
-  const el = document.getElementById(`avatar-${agentId}`);
-  if (el && state.speaking === agentId) {
-    el.classList.remove("speaking");
-    state.speaking = null;
-  }
-  state.currentSpeech = null;
-  if (state.speechTimer) {
-    clearTimeout(state.speechTimer);
-    state.speechTimer = null;
-  }
-  tryShowDeferred();
 }
 
 function tryShowDeferred() {
-  if (state.speechQueue.length > 0) return;
-
-  const hasDeferred = state.pendingOutcome || state.pendingRefereePopup;
-
-  // If a speech bubble is still on screen but has met its minimum display time,
-  // clear it so round-end or popup UI can take focus.
-  if (state.currentSpeech) {
-    const elapsed = Date.now() - state.currentSpeech.shownAt;
-    const duration = state.currentSpeech.duration || 5000;
-    if (hasDeferred && elapsed >= duration) {
-      removeCurrentSpeech();
-    } else {
-      return;
-    }
-  }
-
-  if (state.pendingOutcome) {
-    state.pendingOutcome = null;
-    hideOutcome();
-    if (els.transcriptModal.classList.contains("hidden")) {
-      showRefereeEvaluations(true);
-    }
-  }
-
   if (state.pendingRefereePopup) {
     state.pendingRefereePopup = false;
     if (els.transcriptModal.classList.contains("hidden") && state.refereeEvaluations.length > 0) {
@@ -908,14 +797,6 @@ function showRefereeEvaluations(isFinal = false) {
         const proposalHtml = evaluation.consensus_reached && evaluation.consensus_proposal
           ? `<div class="eval-proposal"><strong>Consensus proposal:</strong> ${escapeHtml(evaluation.consensus_proposal)}</div>`
           : "";
-        const detailsHtml = evaluation.consensus_reached && evaluation.proposal_details && Object.keys(evaluation.proposal_details).length
-          ? `<div class="eval-details">
-              <button class="collapse-toggle" data-target="referee-details-${i}" data-label="details">Show details ▶</button>
-              <div id="referee-details-${i}" class="collapse-content hidden">
-                <pre>${escapeHtml(JSON.stringify(evaluation.proposal_details, null, 2))}</pre>
-              </div>
-            </div>`
-          : "";
         const headerText = isFinal ? "Final Assessment" : `Assessment #${i + 1}`;
         return `
           <div class="evaluation-entry">
@@ -923,7 +804,6 @@ function showRefereeEvaluations(isFinal = false) {
             <div class="eval-summary">${escapeHtml(evaluation.status_summary || "")}</div>
             <div class="checklist">${checklistHtml}</div>
             ${proposalHtml}
-            ${detailsHtml}
           </div>
         `;
       })
@@ -982,6 +862,10 @@ function hideOutcome() {
 }
 
 function showRefereeWarning(content) {
+  // Compress all agent bubbles — the referee is now the focal point.
+  state.activeBubbles.forEach((b, id) => {
+    if (id !== "referee") compressBubble(b);
+  });
   // Remove any existing warning and the current referee speech bubble so only
   // one live referee message is visible at a time.
   document.querySelectorAll(".referee-warning").forEach((el) => el.remove());
@@ -1021,8 +905,8 @@ function updateRules() {
     data: {
       rules: {
         turn_order: els.turnOrder.value,
-        max_turns: parseInt(els.maxTurns.value, 10),
-        min_turns: parseInt(els.minTurns.value, 10),
+        max_rounds: parseInt(els.maxRounds.value, 10),
+        min_rounds: parseInt(els.minRounds.value, 10),
         mode: els.modeSelect.value,
       },
     },
@@ -1102,8 +986,8 @@ els.togglePanel.addEventListener("click", () => {
 });
 
 els.turnOrder.addEventListener("change", updateRules);
-els.maxTurns.addEventListener("change", updateRules);
-els.minTurns.addEventListener("change", updateRules);
+els.maxRounds.addEventListener("change", updateRules);
+els.minRounds.addEventListener("change", updateRules);
 els.modeSelect.addEventListener("change", updateRules);
 
 els.startBtn.addEventListener("click", startRound);
