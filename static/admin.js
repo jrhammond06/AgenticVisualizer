@@ -124,7 +124,17 @@ async function loadStudents() {
           <div><span class="field-label">New password (leave blank to keep)</span>
                <input class="admin-input" id="edit-pass-${u.id}" type="password" placeholder="unchanged"></div>
         </div>
-        <button class="btn btn-primary" onclick="saveStudent(${u.id})">Save</button>
+        <div class="form-row cols-2" style="align-items:flex-end;margin-top:8px">
+          <div>
+            <span class="field-label">Avatar image (used on the board instead of the emoji)</span>
+            <input class="admin-input" id="edit-avatar-${u.id}" type="file" accept="image/png,image/jpeg,image/gif,image/webp">
+          </div>
+          <div>
+            ${u.avatar_url ? `<img src="${esc(u.avatar_url)}" alt="current avatar" style="width:40px;height:40px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:8px">` : ""}
+            <button class="btn btn-secondary" onclick="uploadStudentAvatar(${u.id})">Upload</button>
+          </div>
+        </div>
+        <button class="btn btn-primary" style="margin-top:8px" onclick="saveStudent(${u.id})">Save</button>
       </div>
     `;
     list.appendChild(card);
@@ -142,6 +152,21 @@ async function saveStudent(id) {
     class_tag: document.getElementById(`edit-class-${id}`).value,
     password: document.getElementById(`edit-pass-${id}`).value,
   });
+  loadStudents();
+}
+
+async function uploadStudentAvatar(id) {
+  const input = document.getElementById(`edit-avatar-${id}`);
+  const file = input.files[0];
+  if (!file) { alert("Choose an image file first."); return; }
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`/api/admin/users/${id}/avatar`, { method: "POST", body: form });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    alert(err.detail || `Upload failed (${res.status})`);
+    return;
+  }
   loadStudents();
 }
 
@@ -660,6 +685,9 @@ async function loadPackages() {
         <div class="section-title">Hard constraints (issue-specific)</div>
         <div id="pkg-constraints-${pkg.id}"></div>
         <button class="btn btn-secondary" style="margin-bottom:12px" onclick="addConstraint(${pkg.id})">+ Add constraint</button>
+        <div class="section-title" style="margin-top:16px">Board options <span style="font-weight:400;color:var(--text-muted)">(3–6 named things agents can back — leave empty for the free-form room)</span></div>
+        <div id="pkg-options-${pkg.id}"></div>
+        <button class="btn btn-secondary" style="margin-bottom:12px" onclick="addOption(${pkg.id})">+ Add option</button>
         <div class="section-title" style="margin-top:16px">Agent identity template</div>
         <p class="hint" style="margin-top:0">Defines who agents are in this scenario. Available placeholders: <code>{name}</code>, <code>{goal}</code>, <code>{topic}</code>, <code>{rules}</code>, <code>{system_prompt}</code>, <code>{speaking_instructions}</code>. Leave blank to use built-in defaults.</p>
         <textarea class="admin-textarea" id="pkg-template-${pkg.id}" style="min-height:180px;font-family:monospace;font-size:0.8rem;margin-bottom:12px">${esc(pkg.agent_prompt_template || "")}</textarea>
@@ -669,6 +697,7 @@ async function loadPackages() {
     `;
     list.appendChild(card);
     renderConstraints(pkg.id, pkg.constraints || []);
+    renderOptions(pkg.id, pkg.options || []);
   });
 }
 
@@ -726,14 +755,67 @@ function getConstraints(pkgId) {
   return result;
 }
 
+function renderOptions(pkgId, options) {
+  const container = document.getElementById(`pkg-options-${pkgId}`);
+  container.innerHTML = "";
+  options.forEach((o, idx) => {
+    const row = document.createElement("div");
+    row.className = "rule-item";
+    row.innerHTML = `
+      <div class="rule-item-fields">
+        <input class="admin-input" placeholder="Option label (e.g. Bowling)" value="${esc(o.label)}" data-idx="${idx}" data-prop="label">
+      </div>
+      <button class="btn btn-danger" style="align-self:start" onclick="removeOption(${pkgId},${idx})">✕</button>
+    `;
+    container.appendChild(row);
+  });
+}
+
+function addOption(pkgId) {
+  const container = document.getElementById(`pkg-options-${pkgId}`);
+  const count = container.querySelectorAll(".rule-item").length;
+  if (count >= 6) { alert("A board-mode package can have at most 6 options."); return; }
+  const idx = count;
+  const row = document.createElement("div");
+  row.className = "rule-item";
+  row.innerHTML = `
+    <div class="rule-item-fields">
+      <input class="admin-input" placeholder="Option label (e.g. Bowling)" data-idx="${idx}" data-prop="label">
+    </div>
+    <button class="btn btn-danger" style="align-self:start" onclick="removeOption(${pkgId},${idx})">✕</button>
+  `;
+  container.appendChild(row);
+}
+
+function removeOption(pkgId, idx) {
+  const items = document.querySelectorAll(`#pkg-options-${pkgId} .rule-item`);
+  if (items[idx]) items[idx].remove();
+}
+
+function getOptions(pkgId) {
+  const items = document.querySelectorAll(`#pkg-options-${pkgId} .rule-item`);
+  const result = [];
+  items.forEach((item, i) => {
+    const label = item.querySelector('[data-prop="label"]').value.trim();
+    if (label) result.push({ id: `opt-${i}`, label });
+  });
+  return result;
+}
+
 async function savePackage(pkgId) {
   const rsVal = document.getElementById(`pkg-rs-${pkgId}`).value;
+  const options = getOptions(pkgId);
+  if (options.length > 0 && (options.length < 3 || options.length > 6)) {
+    alert("Board options must be either empty (free-form room) or between 3 and 6 entries.");
+    return;
+  }
   await api("PUT", `/api/admin/packages/${pkgId}`, {
     name: document.getElementById(`pkg-name-${pkgId}`).value,
     topic: document.getElementById(`pkg-topic-${pkgId}`).value,
     goal: document.getElementById(`pkg-goal-${pkgId}`).value,
     rule_set_id: rsVal ? parseInt(rsVal, 10) : null,
     constraints: getConstraints(pkgId),
+    options: options,
     agent_prompt_template: document.getElementById(`pkg-template-${pkgId}`).value,
   });
   loadPackages();
