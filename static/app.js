@@ -248,11 +248,48 @@ function getAgentName(id) {
 }
 
 
+// Shared avatar element builders
+function buildAvatarEl(id, emoji, name, xPercent, yPercent, extraClass, onClick, avatarUrl) {
+  const el = document.createElement("div");
+  el.className = `avatar${extraClass ? " " + extraClass : ""}`;
+  el.id = `avatar-${id}`;
+  el.style.left = `${xPercent}%`;
+  el.style.top = `${yPercent}%`;
+
+  const face = document.createElement("div");
+  face.className = "avatar-face";
+  if (avatarUrl) {
+    const img = document.createElement("img");
+    img.src = avatarUrl;
+    img.alt = name;
+    face.appendChild(img);
+  } else {
+    face.textContent = emoji;
+  }
+
+  const nameEl = document.createElement("div");
+  nameEl.className = "avatar-name";
+  nameEl.textContent = name;
+
+  el.appendChild(face);
+  el.appendChild(nameEl);
+  if (onClick) el.addEventListener("click", onClick);
+  return el;
+}
+
+function buildAgentAvatarEl(agent, xPercent, yPercent) {
+  return buildAvatarEl(
+    agent.id, agent.avatar, agent.name, xPercent, yPercent, "",
+    () => showTranscript(agent.id), agent.avatar_url
+  );
+}
+
 // Rendering avatars in a circle
 function renderAvatars() {
   if (!state.session) return;
   const container = els.avatarsContainer;
   container.innerHTML = "";
+  container.classList.remove("board-mode");
 
   const agents = state.session.agents;
   if (agents.length === 0) {
@@ -267,44 +304,14 @@ function renderAvatars() {
     const angle = (2 * Math.PI * i) / agents.length - Math.PI / 2;
     const left = center + radius * Math.cos(angle);
     const top = center + radius * Math.sin(angle);
-
-    const el = document.createElement("div");
-    el.className = "avatar";
-    el.id = `avatar-${agent.id}`;
-    el.style.left = `${left}%`;
-    el.style.top = `${top}%`;
-
-    const face = document.createElement("div");
-    face.className = "avatar-face";
-    face.textContent = agent.avatar;
-
-    const name = document.createElement("div");
-    name.className = "avatar-name";
-    name.textContent = agent.name;
-
-    el.appendChild(face);
-    el.appendChild(name);
-    el.addEventListener("click", () => showTranscript(agent.id));
-    container.appendChild(el);
+    container.appendChild(buildAgentAvatarEl(agent, left, top));
   });
 
   // Add a clickable referee avatar in the center.
-  const referee = document.createElement("div");
-  referee.className = "avatar referee-avatar";
-  referee.id = "avatar-referee";
-  referee.style.left = "50%";
-  referee.style.top = "50%";
-  referee.title = "Click to see referee assessments";
-  const refereeFace = document.createElement("div");
-  refereeFace.className = "avatar-face";
-  refereeFace.textContent = "🧐";
-  const refereeName = document.createElement("div");
-  refereeName.className = "avatar-name";
-  refereeName.textContent = "Referee";
-  referee.appendChild(refereeFace);
-  referee.appendChild(refereeName);
-  referee.addEventListener("click", () => showRefereeEvaluations());
-  container.appendChild(referee);
+  container.appendChild(
+    buildAvatarEl("referee", "🧐", "Referee", 50, 50, "referee-avatar",
+      () => showRefereeEvaluations())
+  );
 }
 
 // Agent list — compact read-only rows with an expand toggle for full editing.
