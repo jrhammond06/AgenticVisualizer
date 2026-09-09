@@ -27,6 +27,7 @@ class Agent(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4())[:8])
     name: str
     avatar: str = "🤖"
+    avatar_url: Optional[str] = None
     goal: str
     system_prompt: str
 

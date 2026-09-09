@@ -24,7 +24,7 @@ from db_models import (
     User, FormModule, SystemPromptTemplate, FormSubmission,
     RuleSetDB, PackageDB, RunDB, ClassTagDB,
 )
-from models import Agent, RuleOfEngagement, RuleSet, Session
+from models import Agent, Option, RuleOfEngagement, RuleSet, Session, validate_options
 from orchestrator import run_round, advance_step
 
 
@@ -564,8 +564,8 @@ async def list_packages(request: Request, db: DBSession = Depends(get_db)):
         q = q.where(PackageDB.class_tag == class_tag)
     packages = db.exec(q).all()
     return [{"id": p.id, "class_tag": p.class_tag, "name": p.name, "topic": p.topic, "goal": p.goal,
-             "constraints": json.loads(p.constraints), "rule_set_id": p.rule_set_id,
-             "agent_prompt_template": p.agent_prompt_template}
+             "options": json.loads(p.options), "constraints": json.loads(p.constraints),
+             "rule_set_id": p.rule_set_id, "agent_prompt_template": p.agent_prompt_template}
             for p in packages]
 
 
@@ -573,11 +573,17 @@ async def list_packages(request: Request, db: DBSession = Depends(get_db)):
 async def create_package(request: Request, db: DBSession = Depends(get_db)):
     _require_admin(request)
     body = await request.json()
+    options = body.get("options", [])
+    try:
+        validate_options(options)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     pkg = PackageDB(
         class_tag=body.get("class_tag", ""),
         name=body.get("name", "New package"),
         topic=body.get("topic", ""),
         goal=body.get("goal", ""),
+        options=json.dumps(options),
         constraints=json.dumps(body.get("constraints", [])),
         rule_set_id=body.get("rule_set_id"),
         agent_prompt_template=body.get("agent_prompt_template", ""),
@@ -586,8 +592,8 @@ async def create_package(request: Request, db: DBSession = Depends(get_db)):
     db.commit()
     db.refresh(pkg)
     return {"id": pkg.id, "class_tag": pkg.class_tag, "name": pkg.name, "topic": pkg.topic, "goal": pkg.goal,
-            "constraints": json.loads(pkg.constraints), "rule_set_id": pkg.rule_set_id,
-            "agent_prompt_template": pkg.agent_prompt_template}
+            "options": json.loads(pkg.options), "constraints": json.loads(pkg.constraints),
+            "rule_set_id": pkg.rule_set_id, "agent_prompt_template": pkg.agent_prompt_template}
 
 
 @app.put("/api/admin/packages/{pkg_id}")
@@ -601,12 +607,18 @@ async def update_package(pkg_id: int, request: Request,
     for field in ("name", "topic", "goal", "rule_set_id", "agent_prompt_template"):
         if field in body:
             setattr(pkg, field, body[field])
+    if "options" in body:
+        try:
+            validate_options(body["options"])
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        pkg.options = json.dumps(body["options"])
     if "constraints" in body:
         pkg.constraints = json.dumps(body["constraints"])
     db.commit()
     return {"id": pkg.id, "class_tag": pkg.class_tag, "name": pkg.name, "topic": pkg.topic, "goal": pkg.goal,
-            "constraints": json.loads(pkg.constraints), "rule_set_id": pkg.rule_set_id,
-            "agent_prompt_template": pkg.agent_prompt_template}
+            "options": json.loads(pkg.options), "constraints": json.loads(pkg.constraints),
+            "rule_set_id": pkg.rule_set_id, "agent_prompt_template": pkg.agent_prompt_template}
 
 
 @app.delete("/api/admin/packages/{pkg_id}")
@@ -675,6 +687,7 @@ async def load_package(pkg_id: int, request: Request,
         agents.append(Agent(
             name=user.display_name,
             avatar=avatar_pool[i % len(avatar_pool)],
+            avatar_url=user.avatar_url,
             goal="Participate in the negotiation.",
             system_prompt=base_prompt + agent_rules_text,
         ))
@@ -689,6 +702,7 @@ async def load_package(pkg_id: int, request: Request,
         loaded_package_id=pkg.id,
         loaded_package_name=pkg.name,
         agent_prompt_template=pkg.agent_prompt_template or "",
+        options=[Option(**o) for o in json.loads(pkg.options)],
     )
     _run_buffer["roster_ids"] = roster_ids
     _run_buffer["class_tag"] = pkg.class_tag
@@ -789,6 +803,7 @@ async def reset_session_route(request: Request):
         loaded_package_id=session.loaded_package_id,
         loaded_package_name=session.loaded_package_name,
         agent_prompt_template=session.agent_prompt_template,
+        options=session.options,
     )
     await manager.broadcast({"type": "session", "data": session.model_dump()})
     return session.model_dump()
