@@ -10,6 +10,8 @@ class User(SQLModel, table=True):
     password_hash: str
     display_name: str
     class_tag: str = ""
+    # Uploaded avatar image, served from /static/avatars/. None = fall back to the emoji pool.
+    avatar_url: Optional[str] = Field(default=None, nullable=True)
     system_prompt_override: Optional[str] = Field(default=None, nullable=True)
 
 
@@ -57,6 +59,9 @@ class PackageDB(SQLModel, table=True):
     class_tag: str = Field(index=True)
     name: str
     topic: str
+    # JSON array: [{"id": str, "label": str}]. Empty = free-form room (not board mode);
+    # 3-6 entries = board mode, enforced by models.validate_options at the API layer.
+    options: str = "[]"
     # What a successful outcome looks like for the group as a whole (shown to the
     # referee alongside the topic; distinct from each agent's individual goal).
     goal: str = ""
