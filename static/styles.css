@@ -363,6 +363,22 @@ html, body {
   object-fit: cover;
 }
 
+/* Board mode: the steady-state stance ring. Green = WANT, indigo = OK WITH, red = WON'T, so
+   the three-value vocabulary reads from colour alone for students who can't read the chip.
+   Deliberately declared BEFORE .avatar.thinking / .avatar.speaking: those rules have the same
+   specificity, so the later source order lets the transient mid-turn states win while active. */
+.avatar.stance-want .avatar-face {
+  border-color: var(--success);
+}
+
+.avatar.stance-ok_with .avatar-face {
+  border-color: var(--primary);
+}
+
+.avatar.stance-wont .avatar-face {
+  border-color: var(--danger);
+}
+
 .board-option-label {
   position: absolute;
   transform: translate(-50%, -50%);

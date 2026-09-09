@@ -565,7 +565,7 @@ function renderRuleItems(rsId, rules) {
         <option value="guideline"       ${r.severity === "guideline"       ? "selected" : ""}>Guideline</option>
       </select>
       ${_appliesToSelect(idx, r.applies_to)}
-      <button class="btn btn-danger" style="align-self:start" onclick="removeRuleItem(${rsId},${idx})">✕</button>
+      <button class="btn btn-danger" style="align-self:start" onclick="this.closest('.rule-item').remove()">✕</button>
     `;
     container.appendChild(row);
   });
@@ -586,14 +586,9 @@ function addRuleToSet(rsId) {
       <option value="guideline" selected>Guideline</option>
     </select>
     ${_appliesToSelect(idx, "both")}
-    <button class="btn btn-danger" style="align-self:start" onclick="removeRuleItem(${rsId},${idx})">✕</button>
+    <button class="btn btn-danger" style="align-self:start" onclick="this.closest('.rule-item').remove()">✕</button>
   `;
   container.appendChild(row);
-}
-
-function removeRuleItem(rsId, idx) {
-  const items = document.querySelectorAll(`#rs-rules-${rsId} .rule-item`);
-  if (items[idx]) items[idx].remove();
 }
 
 function getRuleItems(rsId) {
@@ -717,7 +712,7 @@ function renderConstraints(pkgId, constraints) {
         <textarea class="admin-textarea" placeholder="Constraint text" data-idx="${idx}" data-prop="text">${esc(c.text)}</textarea>
       </div>
       <div style="align-self:start;font-size:0.75rem;font-weight:700;color:#991b1b;padding:4px 0">HARD</div>
-      <button class="btn btn-danger" style="align-self:start" onclick="removeConstraint(${pkgId},${idx})">✕</button>
+      <button class="btn btn-danger" style="align-self:start" onclick="this.closest('.rule-item').remove()">✕</button>
     `;
     container.appendChild(row);
   });
@@ -734,15 +729,14 @@ function addConstraint(pkgId) {
       <textarea class="admin-textarea" placeholder="Constraint text" data-idx="${idx}" data-prop="text"></textarea>
     </div>
     <div style="align-self:start;font-size:0.75rem;font-weight:700;color:#991b1b;padding:4px 0">HARD</div>
-    <button class="btn btn-danger" style="align-self:start" onclick="removeConstraint(${pkgId},${idx})">✕</button>
+    <button class="btn btn-danger" style="align-self:start" onclick="this.closest('.rule-item').remove()">✕</button>
   `;
   container.appendChild(row);
 }
 
-function removeConstraint(pkgId, idx) {
-  const items = document.querySelectorAll(`#pkg-constraints-${pkgId} .rule-item`);
-  if (items[idx]) items[idx].remove();
-}
+// Rows are removed by direct element reference from the button's own onclick
+// (`this.closest('.rule-item').remove()`), never by a baked-in index — an index captured at
+// render time stops matching the live NodeList as soon as any earlier row is deleted.
 
 function getConstraints(pkgId) {
   const items = document.querySelectorAll(`#pkg-constraints-${pkgId} .rule-item`);
@@ -765,7 +759,7 @@ function renderOptions(pkgId, options) {
       <div class="rule-item-fields">
         <input class="admin-input" placeholder="Option label (e.g. Bowling)" value="${esc(o.label)}" data-idx="${idx}" data-prop="label">
       </div>
-      <button class="btn btn-danger" style="align-self:start" onclick="removeOption(${pkgId},${idx})">✕</button>
+      <button class="btn btn-danger" style="align-self:start" onclick="this.closest('.rule-item').remove()">✕</button>
     `;
     container.appendChild(row);
   });
@@ -782,14 +776,9 @@ function addOption(pkgId) {
     <div class="rule-item-fields">
       <input class="admin-input" placeholder="Option label (e.g. Bowling)" data-idx="${idx}" data-prop="label">
     </div>
-    <button class="btn btn-danger" style="align-self:start" onclick="removeOption(${pkgId},${idx})">✕</button>
+    <button class="btn btn-danger" style="align-self:start" onclick="this.closest('.rule-item').remove()">✕</button>
   `;
   container.appendChild(row);
-}
-
-function removeOption(pkgId, idx) {
-  const items = document.querySelectorAll(`#pkg-options-${pkgId} .rule-item`);
-  if (items[idx]) items[idx].remove();
 }
 
 function getOptions(pkgId) {

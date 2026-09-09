@@ -290,6 +290,19 @@ function buildAgentAvatarEl(agent, xPercent, yPercent) {
   );
 }
 
+// Board mode only: colour an avatar's face ring by its current stance, so WANT / OK WITH /
+// WON'T read at a glance without reading the chip text. Free-form room avatars never carry a
+// stance, so this is never called for them. Idempotent — safe to re-apply when a stance
+// changes on an existing element.
+const STANCE_CLASSES = ["stance-want", "stance-ok_with", "stance-wont"];
+
+function applyStanceClass(el, stance) {
+  if (!el) return;
+  el.classList.remove(...STANCE_CLASSES);
+  const key = stance && stance.stance ? `stance-${stance.stance}` : null;
+  if (key && STANCE_CLASSES.includes(key)) el.classList.add(key);
+}
+
 // Board geometry. All radii are percentages of the container's diameter; the container is
 // `min(55vh, 55vw)` capped at 480px (styles.css), and an avatar face is a fixed 60px circle.
 // The numbers below are derived so that every pair of avatars stays >= 60px apart (i.e. no
@@ -403,7 +416,7 @@ function renderBoard() {
 
   container.appendChild(
     buildAvatarEl("referee", "🧐", "Referee", positions.referee.x, positions.referee.y,
-      "referee-avatar", () => showRefereeEvaluations())
+      "referee-avatar", () => showRefereeEvaluations(), undefined, "Click to see referee assessments")
   );
 
   positions.options.forEach(({ opt, x, y }) => {
@@ -419,6 +432,7 @@ function renderBoard() {
     const pos = positions.agents.get(agent.id);
     const el = buildAgentAvatarEl(agent, pos.x, pos.y);
     const stance = (state.session.stances || {})[agent.id];
+    applyStanceClass(el, stance);
     if (stance && stance.reason) {
       const chip = document.createElement("div");
       chip.className = "stance-chip";
@@ -446,6 +460,7 @@ function applyBoardPositions() {
     el.style.top = `${pos.y}%`;
 
     const stance = (state.session.stances || {})[agentId];
+    applyStanceClass(el, stance);
     let chip = el.querySelector(".stance-chip");
     if (stance && stance.reason) {
       if (!chip) {
