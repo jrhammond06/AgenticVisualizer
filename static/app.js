@@ -249,7 +249,7 @@ function getAgentName(id) {
 
 
 // Shared avatar element builders
-function buildAvatarEl(id, emoji, name, xPercent, yPercent, extraClass, onClick, avatarUrl) {
+function buildAvatarEl(id, emoji, name, xPercent, yPercent, extraClass, onClick, avatarUrl, title) {
   const el = document.createElement("div");
   el.className = `avatar${extraClass ? " " + extraClass : ""}`;
   el.id = `avatar-${id}`;
@@ -274,6 +274,7 @@ function buildAvatarEl(id, emoji, name, xPercent, yPercent, extraClass, onClick,
   el.appendChild(face);
   el.appendChild(nameEl);
   if (onClick) el.addEventListener("click", onClick);
+  if (title) el.title = title;
   return el;
 }
 
@@ -310,7 +311,7 @@ function renderAvatars() {
   // Add a clickable referee avatar in the center.
   container.appendChild(
     buildAvatarEl("referee", "🧐", "Referee", 50, 50, "referee-avatar",
-      () => showRefereeEvaluations())
+      () => showRefereeEvaluations(), undefined, "Click to see referee assessments")
   );
 }
 
