@@ -21,6 +21,16 @@ def _clear_step_signal():
     _step_event.clear()
 
 
+def _apply_stance(session: Session, agent_id: str, stance) -> dict | None:
+    """Update session.stances if a valid stance was parsed; return its dict payload for
+    the broadcast event, or None (board mode inactive, or the reply didn't parse — in
+    which case the agent's previous stance, if any, is left untouched)."""
+    if stance is None:
+        return None
+    session.stances[agent_id] = stance
+    return stance.model_dump()
+
+
 async def run_round(session: Session, broadcast):
     """Run one debate round and stream events via `broadcast`.
 
@@ -103,11 +113,12 @@ async def _run_realtime(session: Session, actors: dict, referee: Referee, broadc
         speaker = _pick_speaker(session, session.turn)
 
         await broadcast({"type": "agent_thinking", "agent_id": speaker.id})
-        content, summary = await actors[speaker.id].generate_reply(
+        content, summary, stance = await actors[speaker.id].generate_reply(
             session.topic,
             _format_history(session, actors),
             session.rules,
             session.rules_of_engagement,
+            session.options,
         )
         session.history.append(Message(agent_id=speaker.id, content=content, turn=session.turn))
         await broadcast({
@@ -116,6 +127,7 @@ async def _run_realtime(session: Session, actors: dict, referee: Referee, broadc
             "content": content,
             "summary": summary,
             "turn": session.turn,
+            "stance": _apply_stance(session, speaker.id, stance),
         })
         await asyncio.sleep(3)
 
@@ -173,7 +185,7 @@ async def _run_step_by_step(session: Session, actors: dict, referee: Referee, br
         for result in results:
             if isinstance(result, Exception):
                 continue
-            agent_id, content, summary = result
+            agent_id, content, summary, stance = result
             session.history.append(Message(agent_id=agent_id, content=content, turn=session.turn))
             opening_events.append({
                 "type": "agent_speak",
@@ -181,6 +193,7 @@ async def _run_step_by_step(session: Session, actors: dict, referee: Referee, br
                 "content": content,
                 "summary": summary,
                 "turn": session.turn,
+                "stance": _apply_stance(session, agent_id, stance),
             })
 
         if session.status != "running":
@@ -223,11 +236,12 @@ async def _run_step_by_step(session: Session, actors: dict, referee: Referee, br
                 break
             session.turn += 1
             await broadcast({"type": "agent_generating", "agent_id": speaker.id, "done": False})
-            content, summary = await actors[speaker.id].generate_reply(
+            content, summary, stance = await actors[speaker.id].generate_reply(
                 session.topic,
                 _format_history(session, actors),
                 session.rules,
                 session.rules_of_engagement,
+                session.options,
             )
             session.history.append(Message(agent_id=speaker.id, content=content, turn=session.turn))
             await broadcast({"type": "agent_generating", "agent_id": speaker.id, "done": True})
@@ -237,6 +251,7 @@ async def _run_step_by_step(session: Session, actors: dict, referee: Referee, br
                 "content": content,
                 "summary": summary,
                 "turn": session.turn,
+                "stance": _apply_stance(session, speaker.id, stance),
             })
 
         if session.status != "running":
@@ -325,31 +340,38 @@ async def _agent_propose(
     rules_of_engagement,
 ):
     await broadcast({"type": "agent_thinking", "agent_id": agent.id})
-    content, summary = await actor.generate_reply(session.topic, "", session.rules, rules_of_engagement)
+    content, summary, stance = await actor.generate_reply(
+        session.topic, "", session.rules, rules_of_engagement, session.options
+    )
     await broadcast({
         "type": "agent_speak",
         "agent_id": agent.id,
         "content": content,
         "summary": summary,
         "turn": turn,
+        "stance": _apply_stance(session, agent.id, stance),
     })
     return agent.id, content
 
 
 async def _agent_propose_queued(agent: AgentModel, actor: AgentActor, session: Session):
     """Generate a simultaneous opening proposal without broadcasting it immediately."""
-    content, summary = await actor.generate_reply(session.topic, "", session.rules, session.rules_of_engagement)
-    return agent.id, content, summary
+    content, summary, stance = await actor.generate_reply(
+        session.topic, "", session.rules, session.rules_of_engagement, session.options
+    )
+    return agent.id, content, summary, stance
 
 
 async def _agent_propose_queued_with_indicator(agent: AgentModel, actor: AgentActor, session: Session, broadcast):
     """Generate a simultaneous opening proposal and show a progress indicator."""
     await broadcast({"type": "agent_generating", "agent_id": agent.id, "done": False})
     try:
-        content, summary = await actor.generate_reply(session.topic, "", session.rules, session.rules_of_engagement)
+        content, summary, stance = await actor.generate_reply(
+            session.topic, "", session.rules, session.rules_of_engagement, session.options
+        )
     finally:
         await broadcast({"type": "agent_generating", "agent_id": agent.id, "done": True})
-    return agent.id, content, summary
+    return agent.id, content, summary, stance
 
 
 def _pick_speaker(session: Session, turn: int) -> AgentModel:
