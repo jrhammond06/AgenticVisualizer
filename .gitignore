@@ -10,4 +10,7 @@ __pycache__/
 # LLM debug logs
 llm_calls.jsonl
 
+# Uploaded student avatar images (the directory is recreated at import time by main.py)
+static/avatars/
+
 .superpowers/
