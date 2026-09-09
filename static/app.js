@@ -139,6 +139,11 @@ function handleMessage(msg) {
     case "agent_speak":
       setThinking(msg.agent_id, false);
       document.querySelectorAll(".referee-warning").forEach((w) => w.remove());
+      if (msg.stance) {
+        state.session.stances = state.session.stances || {};
+        state.session.stances[msg.agent_id] = msg.stance;
+        applyBoardPositions();
+      }
       showSpeech(msg.agent_id, msg.content, { persistent: true, summary: msg.summary });
       addTranscript(msg.agent_id, msg.content);
       log(`💬 ${getAgentName(msg.agent_id)}: ${msg.content}`);
