@@ -146,10 +146,11 @@ class Agent:
         history_text: str,
         rules: RuleSet,
         rules_of_engagement: List[RuleOfEngagement],
-        options: List[Option] = [],
+        options: Optional[List[Option]] = None,
     ) -> tuple[str, str, Optional[AgentStance]]:
         """Return (content, summary, stance). stance is None outside board mode, or when
         the model's board-mode output couldn't be parsed."""
+        options = options or []
         system_content = self._build_system_prompt(topic, rules, rules_of_engagement, options)
 
         user_parts = [f"Topic: {topic}"]

@@ -44,3 +44,41 @@ def test_validate_options_rejects_two():
 def test_validate_options_rejects_seven():
     with pytest.raises(ValueError):
         validate_options([{"id": str(i), "label": f"Option {i}"} for i in range(7)])
+
+
+def test_validate_options_rejects_non_dict_entries():
+    with pytest.raises(ValueError):
+        validate_options(["a", "b", "c"])
+
+
+def test_validate_options_rejects_entry_missing_id():
+    with pytest.raises(ValueError):
+        validate_options([{"label": "One"}, {"id": "2", "label": "Two"}, {"id": "3", "label": "Three"}])
+
+
+def test_validate_options_rejects_entry_missing_label():
+    with pytest.raises(ValueError):
+        validate_options([{"id": "1"}, {"id": "2", "label": "Two"}, {"id": "3", "label": "Three"}])
+
+
+def test_validate_options_rejects_blank_id_or_label():
+    with pytest.raises(ValueError):
+        validate_options([{"id": "  ", "label": "One"}, {"id": "2", "label": "Two"}, {"id": "3", "label": "Three"}])
+    with pytest.raises(ValueError):
+        validate_options([{"id": "1", "label": ""}, {"id": "2", "label": "Two"}, {"id": "3", "label": "Three"}])
+
+
+def test_validate_options_rejects_non_string_id_or_label():
+    with pytest.raises(ValueError):
+        validate_options([{"id": 1, "label": "One"}, {"id": "2", "label": "Two"}, {"id": "3", "label": "Three"}])
+    with pytest.raises(ValueError):
+        validate_options([{"id": "1", "label": 7}, {"id": "2", "label": "Two"}, {"id": "3", "label": "Three"}])
+
+
+def test_validate_options_rejects_duplicate_ids():
+    with pytest.raises(ValueError):
+        validate_options([
+            {"id": "park", "label": "Park Party"},
+            {"id": "park", "label": "Park Again"},
+            {"id": "pool", "label": "Pool"},
+        ])

@@ -18,9 +18,29 @@ class AgentStance(BaseModel):
 
 
 def validate_options(options: list) -> None:
-    """Raise ValueError unless `options` is empty (non-board package) or has 3-6 entries."""
-    if options and not (3 <= len(options) <= 6):
+    """Raise ValueError unless `options` is empty (non-board package) or is a list of 3-6
+    well-formed entries: each a mapping with a non-empty string `id` and `label`, with ids
+    unique across the list (duplicate ids silently collapse wedges on the board)."""
+    if not options:
+        return
+    if not (3 <= len(options) <= 6):
         raise ValueError("A package's options must include between 3 and 6 entries.")
+
+    seen_ids = set()
+    for i, entry in enumerate(options):
+        if not isinstance(entry, dict):
+            raise ValueError(
+                f"Option {i + 1} must be an object with 'id' and 'label' fields."
+            )
+        opt_id = entry.get("id")
+        label = entry.get("label")
+        if not isinstance(opt_id, str) or not opt_id.strip():
+            raise ValueError(f"Option {i + 1} needs a non-empty string 'id'.")
+        if not isinstance(label, str) or not label.strip():
+            raise ValueError(f"Option {i + 1} needs a non-empty string 'label'.")
+        if opt_id in seen_ids:
+            raise ValueError(f"Duplicate option id '{opt_id}' — option ids must be unique.")
+        seen_ids.add(opt_id)
 
 
 class Agent(BaseModel):

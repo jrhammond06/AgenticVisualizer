@@ -32,6 +32,10 @@ from orchestrator import run_round, advance_step
 
 session = Session(topic="Load a package from the Admin page to begin.")
 
+# Board mode's wedge layout is only collision-free up to this many agents (the classroom
+# ceiling the geometry in static/app.js was derived against). Free-form sessions are uncapped.
+MAX_BOARD_AGENTS = 8
+
 # Buffer for the run currently in progress; flushed to DB on round_over.
 _run_buffer: dict = {"active": False, "id": None, "events": [], "started_at": None,
                      "package_id": None, "package_name": "", "class_tag": "", "roster_ids": []}
@@ -674,6 +678,14 @@ async def load_package(pkg_id: int, request: Request,
     body = await request.json()
     student_ids: list = body.get("student_ids", [])
 
+    # Board mode's wedge geometry (static/app.js `computeBoardPositions`) is only proven
+    # collision-free up to MAX_BOARD_AGENTS; beyond that avatars silently overlap.
+    if json.loads(pkg.options) and len(student_ids) > MAX_BOARD_AGENTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Board mode supports at most {MAX_BOARD_AGENTS} agents.",
+        )
+
     rule_set_rules: list = []
     rule_agent_instructions: str = ""
     if pkg.rule_set_id:
@@ -885,7 +897,13 @@ async def websocket_endpoint(websocket: WebSocket):
                 if "rules_of_engagement" in payload:
                     session.rules_of_engagement = [RuleOfEngagement(**r) for r in payload["rules_of_engagement"]]
                 if "agents" in payload:
-                    session.agents = [Agent(**a) for a in payload["agents"]]
+                    if session.options and len(payload["agents"]) > MAX_BOARD_AGENTS:
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": f"Board mode supports at most {MAX_BOARD_AGENTS} agents.",
+                        })
+                    else:
+                        session.agents = [Agent(**a) for a in payload["agents"]]
                 await manager.broadcast({"type": "session", "data": session.model_dump()})
 
     except WebSocketDisconnect:
