@@ -1,8 +1,26 @@
 from pydantic import BaseModel, Field
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 from uuid import uuid4
 
 from config import MAX_ROUNDS_DEFAULT, MIN_ROUNDS_DEFAULT
+
+
+class Option(BaseModel):
+    id: str
+    label: str
+
+
+class AgentStance(BaseModel):
+    stance: Literal["want", "ok_with", "wont"]
+    option_id: str
+    reason: str
+    full_text: str
+
+
+def validate_options(options: list) -> None:
+    """Raise ValueError unless `options` is empty (non-board package) or has 3-6 entries."""
+    if options and not (3 <= len(options) <= 6):
+        raise ValueError("A package's options must include between 3 and 6 entries.")
 
 
 class Agent(BaseModel):
@@ -58,6 +76,10 @@ class Session(BaseModel):
     loaded_package_id: Optional[int] = None
     loaded_package_name: Optional[str] = None
     agent_prompt_template: str = ""
+    # Board mode: declared negotiation options and each agent's current stance.
+    # Both empty means this session runs the original free-form room.
+    options: List[Option] = []
+    stances: Dict[str, AgentStance] = {}
     # Round state, preserved when auto-pause interrupts a round.
     turn: int = 0
     consensus_reached: bool = False
