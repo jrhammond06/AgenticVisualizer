@@ -375,7 +375,7 @@ html, body {
   white-space: nowrap;
   box-shadow: var(--shadow);
   pointer-events: none;
-  z-index: 2;
+  z-index: 4;
 }
 
 .stance-chip {

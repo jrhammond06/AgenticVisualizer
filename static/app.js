@@ -290,13 +290,13 @@ function buildAgentAvatarEl(agent, xPercent, yPercent) {
   );
 }
 
-const BOARD_LABEL_RADIUS = 42;       // percent — where option labels sit, near the rim
-const BOARD_START_RADIUS = 34;       // percent — first (outermost) avatar ring in a wedge
-const BOARD_RADIUS_STEP = 11;        // percent — each ring steps this far inward
-const BOARD_MIN_RADIUS = 20;         // percent — never place an avatar closer than this to center
+const BOARD_LABEL_RADIUS = 46;       // percent — where option labels sit, near the rim
+const BOARD_START_RADIUS = 42;       // percent — first (outermost) avatar ring in a wedge
+const BOARD_RADIUS_STEP = 14;        // percent — each ring steps this far inward
+const BOARD_MIN_RADIUS = 14;         // percent — never place an avatar closer than this to center
 const BOARD_UNDECIDED_RADIUS = 14;   // percent — the undecided ring around the referee
 const BOARD_AVATARS_PER_RING = 3;    // avatars per ring before wrapping to the next ring inward
-const BOARD_WEDGE_ARC_SPREAD = 0.5;  // radians — angular spread of avatars within one ring
+const BOARD_WEDGE_ARC_SPREAD = 1.08; // radians — angular spread of avatars within one ring
 
 function isBoardMode() {
   return !!(state.session && state.session.options && state.session.options.length > 0);
