@@ -363,6 +363,39 @@ html, body {
   object-fit: cover;
 }
 
+.board-option-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  padding: 4px 10px;
+  background: rgba(79, 70, 229, 0.92);
+  color: white;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: var(--shadow);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.stance-chip {
+  margin-top: 3px;
+  padding: 1px 6px;
+  background: rgba(30, 27, 75, 0.9);
+  color: #e0e7ff;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  white-space: nowrap;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.avatars-container.board-mode .avatar {
+  z-index: 3;
+}
+
 .avatar-name {
   margin-top: 5px;
   padding: 2px 7px;

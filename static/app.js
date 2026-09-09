@@ -285,9 +285,151 @@ function buildAgentAvatarEl(agent, xPercent, yPercent) {
   );
 }
 
+const BOARD_LABEL_RADIUS = 42;       // percent — where option labels sit, near the rim
+const BOARD_START_RADIUS = 34;       // percent — first (outermost) avatar ring in a wedge
+const BOARD_RADIUS_STEP = 11;        // percent — each ring steps this far inward
+const BOARD_MIN_RADIUS = 20;         // percent — never place an avatar closer than this to center
+const BOARD_UNDECIDED_RADIUS = 14;   // percent — the undecided ring around the referee
+const BOARD_AVATARS_PER_RING = 3;    // avatars per ring before wrapping to the next ring inward
+const BOARD_WEDGE_ARC_SPREAD = 0.5;  // radians — angular spread of avatars within one ring
+
+function isBoardMode() {
+  return !!(state.session && state.session.options && state.session.options.length > 0);
+}
+
+function computeBoardPositions(session) {
+  const options = session.options;
+  const stances = session.stances || {};
+  const n = options.length;
+
+  const byOption = new Map(options.map((o) => [o.id, []]));
+  const undecided = [];
+  session.agents.forEach((agent) => {
+    const stance = stances[agent.id];
+    if (stance && byOption.has(stance.option_id)) {
+      byOption.get(stance.option_id).push(agent);
+    } else {
+      undecided.push(agent);
+    }
+  });
+
+  const agentPositions = new Map();
+
+  undecided.forEach((agent, i) => {
+    const angle = (2 * Math.PI * i) / Math.max(undecided.length, 1) - Math.PI / 2;
+    agentPositions.set(agent.id, {
+      x: 50 + BOARD_UNDECIDED_RADIUS * Math.cos(angle),
+      y: 50 + BOARD_UNDECIDED_RADIUS * Math.sin(angle),
+    });
+  });
+
+  const optionPositions = options.map((opt, i) => {
+    const theta = (2 * Math.PI * i) / n - Math.PI / 2;
+    const wedgeAgents = byOption.get(opt.id);
+
+    wedgeAgents.forEach((agent, k) => {
+      const ring = Math.floor(k / BOARD_AVATARS_PER_RING);
+      const radius = Math.max(BOARD_START_RADIUS - ring * BOARD_RADIUS_STEP, BOARD_MIN_RADIUS);
+      const ringStart = ring * BOARD_AVATARS_PER_RING;
+      const ringCount = Math.min(BOARD_AVATARS_PER_RING, wedgeAgents.length - ringStart);
+      const posInRing = k - ringStart;
+      const angleOffset = ringCount > 1 ? (posInRing / (ringCount - 1) - 0.5) * BOARD_WEDGE_ARC_SPREAD : 0;
+      const angle = theta + angleOffset;
+      agentPositions.set(agent.id, {
+        x: 50 + radius * Math.cos(angle),
+        y: 50 + radius * Math.sin(angle),
+      });
+    });
+
+    return {
+      opt,
+      x: 50 + BOARD_LABEL_RADIUS * Math.cos(theta),
+      y: 50 + BOARD_LABEL_RADIUS * Math.sin(theta),
+    };
+  });
+
+  return { referee: { x: 50, y: 50 }, options: optionPositions, agents: agentPositions };
+}
+
+function renderBoard() {
+  const container = els.avatarsContainer;
+  container.innerHTML = "";
+  container.classList.add("board-mode");
+
+  const agents = state.session.agents;
+  if (agents.length === 0) {
+    container.innerHTML = '<div class="empty-room">Add agents to start</div>';
+    return;
+  }
+
+  const positions = computeBoardPositions(state.session);
+
+  container.appendChild(
+    buildAvatarEl("referee", "🧐", "Referee", positions.referee.x, positions.referee.y,
+      "referee-avatar", () => showRefereeEvaluations())
+  );
+
+  positions.options.forEach(({ opt, x, y }) => {
+    const label = document.createElement("div");
+    label.className = "board-option-label";
+    label.textContent = opt.label;
+    label.style.left = `${x}%`;
+    label.style.top = `${y}%`;
+    container.appendChild(label);
+  });
+
+  agents.forEach((agent) => {
+    const pos = positions.agents.get(agent.id);
+    const el = buildAgentAvatarEl(agent, pos.x, pos.y);
+    const stance = (state.session.stances || {})[agent.id];
+    if (stance && stance.reason) {
+      const chip = document.createElement("div");
+      chip.className = "stance-chip";
+      chip.textContent = stance.reason;
+      el.appendChild(chip);
+    }
+    container.appendChild(el);
+  });
+}
+
+function applyBoardPositions() {
+  if (!isBoardMode()) return;
+  const positions = computeBoardPositions(state.session);
+
+  const refereeEl = document.getElementById("avatar-referee");
+  if (refereeEl) {
+    refereeEl.style.left = `${positions.referee.x}%`;
+    refereeEl.style.top = `${positions.referee.y}%`;
+  }
+
+  positions.agents.forEach((pos, agentId) => {
+    const el = document.getElementById(`avatar-${agentId}`);
+    if (!el) return;
+    el.style.left = `${pos.x}%`;
+    el.style.top = `${pos.y}%`;
+
+    const stance = (state.session.stances || {})[agentId];
+    let chip = el.querySelector(".stance-chip");
+    if (stance && stance.reason) {
+      if (!chip) {
+        chip = document.createElement("div");
+        chip.className = "stance-chip";
+        el.appendChild(chip);
+      }
+      chip.textContent = stance.reason;
+    } else if (chip) {
+      chip.remove();
+    }
+  });
+}
+
 // Rendering avatars in a circle
 function renderAvatars() {
   if (!state.session) return;
+  if (isBoardMode()) {
+    renderBoard();
+    return;
+  }
   const container = els.avatarsContainer;
   container.innerHTML = "";
   container.classList.remove("board-mode");
