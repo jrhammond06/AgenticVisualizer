@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -159,6 +159,9 @@ app.add_middleware(
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 os.makedirs(static_dir, exist_ok=True)
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+AVATAR_DIR = os.path.join(static_dir, "avatars")
+os.makedirs(AVATAR_DIR, exist_ok=True)
 
 
 # ── Page routes ───────────────────────────────────────────────────────────────
@@ -339,7 +342,7 @@ async def list_users(request: Request, db: DBSession = Depends(get_db)):
     _require_admin(request)
     users = db.exec(select(User)).all()
     return [{"id": u.id, "username": u.username, "display_name": u.display_name,
-             "class_tag": u.class_tag} for u in users]
+             "class_tag": u.class_tag, "avatar_url": u.avatar_url} for u in users]
 
 
 @app.post("/api/admin/users")
@@ -361,7 +364,7 @@ async def create_user(request: Request, db: DBSession = Depends(get_db)):
     db.commit()
     db.refresh(user)
     return {"id": user.id, "username": user.username, "display_name": user.display_name,
-            "class_tag": user.class_tag}
+            "class_tag": user.class_tag, "avatar_url": user.avatar_url}
 
 
 @app.put("/api/admin/users/{user_id}")
@@ -380,7 +383,29 @@ async def update_user(user_id: int, request: Request,
         user.password_hash = hash_password(body["password"])
     db.commit()
     return {"id": user.id, "username": user.username, "display_name": user.display_name,
-            "class_tag": user.class_tag}
+            "class_tag": user.class_tag, "avatar_url": user.avatar_url}
+
+
+@app.post("/api/admin/users/{user_id}/avatar")
+async def upload_avatar(user_id: int, request: Request, db: DBSession = Depends(get_db),
+                        file: UploadFile = File(...)):
+    _require_admin(request)
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404)
+
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in (".png", ".jpg", ".jpeg", ".gif", ".webp"):
+        raise HTTPException(status_code=400, detail="Unsupported image type. Use PNG, JPEG, GIF, or WebP.")
+
+    dest_path = os.path.join(AVATAR_DIR, f"{user_id}{ext}")
+    contents = await file.read()
+    with open(dest_path, "wb") as f:
+        f.write(contents)
+
+    user.avatar_url = f"/static/avatars/{user_id}{ext}"
+    db.commit()
+    return {"avatar_url": user.avatar_url}
 
 
 @app.delete("/api/admin/users/{user_id}")
