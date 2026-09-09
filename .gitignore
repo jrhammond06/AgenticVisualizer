@@ -9,3 +9,5 @@ __pycache__/
 
 # LLM debug logs
 llm_calls.jsonl
+
+.superpowers/
