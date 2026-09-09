@@ -186,8 +186,11 @@ function loadSession(data) {
   const pkgSection = document.getElementById("package-section");
   const pkgBanner = document.getElementById("package-banner");
   if (data.loaded_package_name) {
+    const goalLine = data.goal
+      ? `<br><span style="font-size:0.85rem;color:var(--text-muted)">Goal: ${escapeHtml(data.goal)}</span>`
+      : "";
     pkgBanner.innerHTML = `<strong>${escapeHtml(data.loaded_package_name)}</strong><br>
-      <span style="font-size:0.85rem;color:var(--text-muted)">${escapeHtml(data.topic)}</span>`;
+      <span style="font-size:0.85rem;color:var(--text-muted)">${escapeHtml(data.topic)}</span>${goalLine}`;
     pkgSection.style.display = "";
   } else {
     pkgSection.style.display = "none";

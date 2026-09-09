@@ -19,15 +19,16 @@ class Referee:
             lines.append(f"{i}. [{label}] {rule.name}: {rule.text}")
         return "\n".join(lines)
 
-    def _build_system_prompt(self, topic: str) -> str:
+    def _build_system_prompt(self, topic: str, goal: str = "") -> str:
         rules_text = self._format_rules()
         rule_names = [rule.name for rule in self.rules_of_engagement]
         checklist_example = {name: {"status": "satisfied|violated|not_applicable", "note": "short explanation"} for name in rule_names}
+        goal_line = f"\nGoal (what a successful outcome looks like): {goal}\n" if goal.strip() else ""
 
         return f"""You are the Referee for a managed debate.
 
 Topic: {topic}
-
+{goal_line}
 Rules of engagement to enforce:
 {rules_text}
 
@@ -39,7 +40,7 @@ Your job:
 1. Monitor the conversation closely.
 2. Use the provided agent roster to track who has spoken and who has not. Do not declare consensus until every agent in the room has had a chance to contribute.
 3. Check every proposal or emerging consensus against each rule of engagement. List specific, clear warnings for any VIOLATED rule and suggest concrete adjustments.
-4. Decide whether the group has genuinely reached consensus on a final proposal.
+4. Decide whether the group has genuinely reached consensus on a final proposal{" that satisfies the stated goal" if goal.strip() else ""}.
 5. If consensus is reached, summarize the agreed proposal in plain language.
 6. If consensus is NOT reached, return a brief "where things stand" summary: what each side wants, what conflicts remain, and what would need to change to reach agreement. Do NOT force a conclusion.
 
@@ -77,8 +78,8 @@ Your entire response must fit within {config.REFEREE_MAX_TOKENS} tokens. Keep ch
             lines.append("- (everyone has spoken)")
         return "\n".join(lines)
 
-    async def evaluate(self, topic: str, history_text: str, agents: List[Agent]) -> RefereeEvaluation:
-        system = self._build_system_prompt(topic)
+    async def evaluate(self, topic: str, history_text: str, agents: List[Agent], goal: str = "") -> RefereeEvaluation:
+        system = self._build_system_prompt(topic, goal)
         agents_text = self._format_agents(agents, history_text)
         user = f"{agents_text}\n\nConversation so far:\n{history_text}\n\nEvaluate the current state of the negotiation."
         messages = [

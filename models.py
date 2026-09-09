@@ -48,6 +48,7 @@ class RefereeEvaluation(BaseModel):
 
 class Session(BaseModel):
     topic: str = "What should our team focus on next quarter?"
+    goal: str = ""
     agents: List[Agent] = []
     history: List[Message] = []
     rules: RuleSet = Field(default_factory=RuleSet)

@@ -57,6 +57,9 @@ class PackageDB(SQLModel, table=True):
     class_tag: str = Field(index=True)
     name: str
     topic: str
+    # What a successful outcome looks like for the group as a whole (shown to the
+    # referee alongside the topic; distinct from each agent's individual goal).
+    goal: str = ""
     # JSON array of hard constraints: [{name, text, severity: "hard_constraint"}]
     constraints: str = "[]"
     rule_set_id: Optional[int] = Field(default=None, foreign_key="ruleset.id")

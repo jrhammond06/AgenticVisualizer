@@ -372,7 +372,7 @@ def _format_history(session: Session, actors: dict) -> str:
 async def _referee_check_queued(session: Session, actors: dict, referee: Referee):
     """Run a referee evaluation without broadcasting, so it can be queued for playback."""
     history_text = _format_history(session, actors)
-    evaluation = await referee.evaluate(session.topic, history_text, session.agents)
+    evaluation = await referee.evaluate(session.topic, history_text, session.agents, session.goal)
 
     # Share the referee's evaluation with the agents so they can respond to warnings.
     referee_lines = [f"Status: {evaluation.status_summary}"]

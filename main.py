@@ -563,7 +563,7 @@ async def list_packages(request: Request, db: DBSession = Depends(get_db)):
     if class_tag:
         q = q.where(PackageDB.class_tag == class_tag)
     packages = db.exec(q).all()
-    return [{"id": p.id, "class_tag": p.class_tag, "name": p.name, "topic": p.topic,
+    return [{"id": p.id, "class_tag": p.class_tag, "name": p.name, "topic": p.topic, "goal": p.goal,
              "constraints": json.loads(p.constraints), "rule_set_id": p.rule_set_id,
              "agent_prompt_template": p.agent_prompt_template}
             for p in packages]
@@ -577,6 +577,7 @@ async def create_package(request: Request, db: DBSession = Depends(get_db)):
         class_tag=body.get("class_tag", ""),
         name=body.get("name", "New package"),
         topic=body.get("topic", ""),
+        goal=body.get("goal", ""),
         constraints=json.dumps(body.get("constraints", [])),
         rule_set_id=body.get("rule_set_id"),
         agent_prompt_template=body.get("agent_prompt_template", ""),
@@ -584,7 +585,7 @@ async def create_package(request: Request, db: DBSession = Depends(get_db)):
     db.add(pkg)
     db.commit()
     db.refresh(pkg)
-    return {"id": pkg.id, "class_tag": pkg.class_tag, "name": pkg.name, "topic": pkg.topic,
+    return {"id": pkg.id, "class_tag": pkg.class_tag, "name": pkg.name, "topic": pkg.topic, "goal": pkg.goal,
             "constraints": json.loads(pkg.constraints), "rule_set_id": pkg.rule_set_id,
             "agent_prompt_template": pkg.agent_prompt_template}
 
@@ -597,13 +598,13 @@ async def update_package(pkg_id: int, request: Request,
     if not pkg:
         raise HTTPException(status_code=404)
     body = await request.json()
-    for field in ("name", "topic", "rule_set_id", "agent_prompt_template"):
+    for field in ("name", "topic", "goal", "rule_set_id", "agent_prompt_template"):
         if field in body:
             setattr(pkg, field, body[field])
     if "constraints" in body:
         pkg.constraints = json.dumps(body["constraints"])
     db.commit()
-    return {"id": pkg.id, "class_tag": pkg.class_tag, "name": pkg.name, "topic": pkg.topic,
+    return {"id": pkg.id, "class_tag": pkg.class_tag, "name": pkg.name, "topic": pkg.topic, "goal": pkg.goal,
             "constraints": json.loads(pkg.constraints), "rule_set_id": pkg.rule_set_id,
             "agent_prompt_template": pkg.agent_prompt_template}
 
@@ -681,6 +682,7 @@ async def load_package(pkg_id: int, request: Request,
 
     session = Session(
         topic=pkg.topic,
+        goal=pkg.goal,
         agents=agents,
         rules=RuleSet(agent_instructions=rule_agent_instructions),
         rules_of_engagement=[RuleOfEngagement(**r) for r in all_roe],
@@ -780,6 +782,7 @@ async def reset_session_route(request: Request):
         raise HTTPException(status_code=400, detail="Cannot reset while a round is running.")
     session = Session(
         topic=session.topic,
+        goal=session.goal,
         agents=session.agents,
         rules=session.rules,
         rules_of_engagement=session.rules_of_engagement,

@@ -110,6 +110,7 @@
       background: var(--bg); border-radius: 8px; margin-bottom: 8px;
     }
     .rule-item-fields { display: flex; flex-direction: column; gap: 6px; }
+    .rule-item-fields textarea { min-height: 110px; }
 
     /* Field row (compact display) */
     .field-row {
@@ -196,10 +197,7 @@
 
   <nav class="tab-bar">
     <button class="tab-btn active" data-tab="students">Students</button>
-    <button class="tab-btn" data-tab="form">Agent Builder</button>
-    <button class="tab-btn" data-tab="profiles">Profiles</button>
-    <button class="tab-btn" data-tab="rulesets">Rule Sets</button>
-    <button class="tab-btn" data-tab="packages">Packages</button>
+    <button class="tab-btn" data-tab="scenarios">Scenarios</button>
     <button class="tab-btn" data-tab="runs">Runs</button>
   </nav>
 
@@ -217,7 +215,12 @@
       <div id="classes-list"></div>
       <hr class="divider">
 
-      <div class="section-title">Students</div>
+      <div class="card-row" style="margin-bottom:12px">
+        <div class="section-title" style="margin-bottom:0">Students</div>
+        <div class="spacer"></div>
+        <button class="btn btn-secondary" onclick="openAllAgentsModal()">👥 All Agents</button>
+        <button class="btn btn-secondary" onclick="openAgentBuilderModal()">⚙ Agent Questions</button>
+      </div>
       <div class="admin-card">
         <div class="section-title">Add student</div>
         <div class="form-row cols-3">
@@ -234,64 +237,14 @@
       <div id="students-list"></div>
     </div>
 
-    <!-- FORM TAB -->
-    <div class="tab-pane" id="tab-form">
-      <div class="filter-bar">
-        <span class="field-label" style="margin:0">Class:</span>
-        <select id="form-class-filter" class="admin-select" onchange="loadFormTab()"><option value="">— select class —</option></select>
-      </div>
-
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
-        <!-- Modules column -->
-        <div>
-          <div class="section-title">Form modules</div>
-          <div id="modules-list"></div>
-          <button class="btn btn-secondary" onclick="createModule()">+ Add module</button>
-        </div>
-        <!-- Template column -->
-        <div>
-          <div class="section-title">System prompt template</div>
-          <div class="admin-card">
-            <p class="hint" style="margin-top:0">Click or drag a placeholder into the template. Built-in: <code>{display_name}</code>. Fields from your modules appear below.</p>
-            <div id="field-key-palette" class="field-key-palette"></div>
-            <textarea id="template-text" class="admin-textarea" style="min-height:180px" spellcheck="false" placeholder="You are {display_name}. Your position: {position}. Non-negotiables: {limits}."></textarea>
-            <div style="display:flex;gap:8px;margin-top:8px">
-              <button class="btn btn-primary" onclick="saveTemplate()">Save template</button>
-              <span id="template-status" class="hint"></span>
-            </div>
-          </div>
-
-        </div>
-      </div>
-
-      <div id="completion-tracker"></div>
-    </div>
-
-    <!-- RULE SETS TAB -->
-    <div class="tab-pane" id="tab-rulesets">
-      <div class="section-title">Rule sets</div>
-      <div id="rulesets-list"></div>
-      <button class="btn btn-secondary" onclick="createRuleSet()">+ New rule set</button>
-    </div>
-
-    <!-- PACKAGES TAB -->
-    <div class="tab-pane" id="tab-packages">
+    <!-- SCENARIOS TAB -->
+    <div class="tab-pane" id="tab-scenarios">
       <div class="filter-bar">
         <span class="field-label" style="margin:0">Class:</span>
         <select id="pkg-class-filter" class="admin-select" onchange="loadPackages()"><option value="">— select class —</option></select>
       </div>
       <div id="packages-list"></div>
-      <button class="btn btn-secondary" onclick="createPackage()">+ New package</button>
-    </div>
-
-    <!-- PROFILES TAB -->
-    <div class="tab-pane" id="tab-profiles">
-      <div class="filter-bar">
-        <span class="field-label" style="margin:0">Class:</span>
-        <select id="profiles-class-filter" class="admin-select" onchange="loadProfiles()"><option value="">— select class —</option></select>
-      </div>
-      <p class="hint">Edit a student's system prompt directly. A saved override takes precedence over the template at package load time. Reset to return to template-derived output.</p>
-      <div id="profiles-list"></div>
+      <button class="btn btn-secondary" onclick="createPackage()">+ New scenario</button>
     </div>
 
     <!-- RUNS TAB -->
@@ -329,11 +282,11 @@
   </div>
 </div>
 
-<!-- Load package modal -->
+<!-- Load scenario modal -->
 <div class="modal-overlay hidden" id="load-modal">
   <div class="modal-box">
     <div class="modal-header">
-      <h3 id="load-modal-title">Load package</h3>
+      <h3 id="load-modal-title">Load scenario</h3>
       <button class="close-btn" onclick="closeLoadModal()">&times;</button>
     </div>
     <div class="modal-body">
@@ -343,6 +296,101 @@
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeLoadModal()">Cancel</button>
       <button class="btn btn-success" onclick="confirmLoad()">Load for Session →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Agent Questions modal (form modules + prompt template — edited rarely, per class) -->
+<div class="modal-overlay hidden" id="agent-builder-modal">
+  <div class="modal-box" style="width:min(95%,960px);max-height:88vh">
+    <div class="modal-header">
+      <h3>Agent Questions</h3>
+      <button class="close-btn" onclick="closeAgentBuilderModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="filter-bar">
+        <span class="field-label" style="margin:0">Class:</span>
+        <select id="ab-class-filter" class="admin-select" onchange="loadFormTab()"><option value="">— select class —</option></select>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:20px">
+        <!-- Modules section -->
+        <div>
+          <div class="section-title">Form modules</div>
+          <div id="modules-list"></div>
+          <button class="btn btn-secondary" onclick="createModule()">+ Add module</button>
+        </div>
+        <!-- Template section -->
+        <div>
+          <div class="section-title">System prompt template</div>
+          <div class="admin-card">
+            <p class="hint" style="margin-top:0">Click or drag a placeholder into the template. Built-in: <code>{display_name}</code>. Fields from your modules appear below.</p>
+            <div id="field-key-palette" class="field-key-palette"></div>
+            <textarea id="template-text" class="admin-textarea" style="min-height:180px" spellcheck="false" placeholder="You are {display_name}. Your position: {position}. Non-negotiables: {limits}."></textarea>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <button class="btn btn-primary" onclick="saveTemplate()">Save template</button>
+              <span id="template-status" class="hint"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="completion-tracker"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeAgentBuilderModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- All Agents modal (whole-class overview: every student's answers + system prompt) -->
+<div class="modal-overlay hidden" id="all-agents-modal">
+  <div class="modal-box" style="width:min(95%,900px);max-height:88vh">
+    <div class="modal-header">
+      <h3>All agents</h3>
+      <button class="close-btn" onclick="closeAllAgentsModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="filter-bar">
+        <span class="field-label" style="margin:0">Class:</span>
+        <select id="aa-class-filter" class="admin-select" onchange="loadAllAgents()"><option value="">— select class —</option></select>
+      </div>
+      <div id="all-agents-list"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeAllAgentsModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Student agent modal (form answers + generated/overridden system prompt for one student) -->
+<div class="modal-overlay hidden" id="student-agent-modal">
+  <div class="modal-box" style="width:min(90%,640px);max-height:85vh">
+    <div class="modal-header">
+      <h3 id="sa-modal-title">Student's agent</h3>
+      <button class="close-btn" onclick="closeStudentAgentModal()">&times;</button>
+    </div>
+    <div class="modal-body" id="sa-modal-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeStudentAgentModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rule set library modal (reusable ground rules, referenced by scenarios) -->
+<div class="modal-overlay hidden" id="rulesets-modal">
+  <div class="modal-box" style="width:min(95%,820px);max-height:88vh">
+    <div class="modal-header">
+      <h3>Rule set library</h3>
+      <button class="close-btn" onclick="closeRuleSetsModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="hint" style="margin-top:0">Reusable ground rules for how agents engage. Attach one to a scenario from its editor.</p>
+      <div id="rulesets-list"></div>
+      <button class="btn btn-secondary" onclick="createRuleSet()">+ New rule set</button>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeRuleSetsModal()">Close</button>
     </div>
   </div>
 </div>

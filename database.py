@@ -13,6 +13,7 @@ def _migrate():
         "ALTER TABLE ruleset ADD COLUMN agent_instructions TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE package ADD COLUMN agent_prompt_template TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE formmodule ADD COLUMN preamble TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE package ADD COLUMN goal TEXT NOT NULL DEFAULT ''",
     ]
     with engine.connect() as conn:
         for sql in migrations:

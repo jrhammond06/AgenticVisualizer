@@ -13,8 +13,8 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     btn.classList.add("active");
     document.getElementById(`tab-${btn.dataset.tab}`).classList.add("active");
     if (btn.dataset.tab === "runs") loadRuns();
-    if (btn.dataset.tab === "rulesets") loadRuleSets();
-    if (btn.dataset.tab === "profiles") loadProfiles();
+    if (btn.dataset.tab === "scenarios") loadPackages();
+    if (btn.dataset.tab === "students") loadStudents();
   });
 });
 
@@ -68,7 +68,7 @@ function populateClassSelects() {
     allClasses.map((c) =>
       `<option value="${esc(c.tag)}">${esc(c.tag)}${c.name ? " — " + esc(c.name) : ""}</option>`
     ).join("");
-  ["s-class", "form-class-filter", "pkg-class-filter", "profiles-class-filter"].forEach((id) => {
+  ["s-class", "ab-class-filter", "pkg-class-filter", "aa-class-filter"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.innerHTML = opts;
   });
@@ -109,6 +109,7 @@ async function loadStudents() {
           <span style="color:var(--text-muted);margin-left:8px;font-size:0.85rem">@${esc(u.username)}</span>
           <span class="badge badge-blue" style="margin-left:8px">${esc(u.class_tag) || "no class"}</span>
         </div>
+        <button class="btn btn-primary" onclick="openStudentAgentModal(${u.id}, '${esc(u.display_name)}', '${esc(u.class_tag)}')">Agent →</button>
         <button class="btn btn-secondary" onclick="editStudent(${u.id})">Edit</button>
         <button class="btn btn-danger" onclick="deleteStudent(${u.id}, '${esc(u.display_name)}')">Delete</button>
       </div>
@@ -218,9 +219,25 @@ function insertFieldKey(key) {
   _tmplSelStart = _tmplSelEnd = newPos;
 }
 
-// ── FORM TAB ──────────────────────────────────────────────────────────────────
+// ── AGENT BUILDER MODAL (form modules + prompt template) ──────────────────────
+function openAgentBuilderModal() {
+  document.getElementById("agent-builder-modal").classList.remove("hidden");
+  if (document.getElementById("ab-class-filter").value.trim()) {
+    loadFormTab();
+  } else {
+    document.getElementById("modules-list").innerHTML = '<div class="empty">Select a class above to manage its questions.</div>';
+    document.getElementById("template-text").value = "";
+    document.getElementById("field-key-palette").innerHTML = "";
+    document.getElementById("completion-tracker").innerHTML = "";
+  }
+}
+
+function closeAgentBuilderModal() {
+  document.getElementById("agent-builder-modal").classList.add("hidden");
+}
+
 async function loadFormTab() {
-  const classTag = document.getElementById("form-class-filter").value.trim();
+  const classTag = document.getElementById("ab-class-filter").value.trim();
   const [modules, tmpl] = await Promise.all([
     api("GET", `/api/admin/modules?class_tag=${encodeURIComponent(classTag)}`),
     api("GET", `/api/admin/template?class_tag=${encodeURIComponent(classTag)}`),
@@ -379,7 +396,7 @@ async function deleteModule(modId) {
 }
 
 async function createModule() {
-  const classTag = document.getElementById("form-class-filter").value.trim();
+  const classTag = document.getElementById("ab-class-filter").value.trim();
   if (!classTag) { alert("Select a class first."); return; }
   await api("POST", "/api/admin/modules", {
     class_tag: classTag, title: "New module", week_number: 0, field_defs: [], unlocked: false,
@@ -388,7 +405,7 @@ async function createModule() {
 }
 
 async function saveTemplate() {
-  const classTag = document.getElementById("form-class-filter").value.trim();
+  const classTag = document.getElementById("ab-class-filter").value.trim();
   if (!classTag) { alert("Select a class first."); return; }
   await api("PUT", "/api/admin/template", {
     class_tag: classTag,
@@ -437,7 +454,17 @@ async function loadCompletionTracker(classTag, modules) {
     </div>`;
 }
 
-// ── RULE SETS TAB ─────────────────────────────────────────────────────────────
+// ── RULE SET LIBRARY MODAL ─────────────────────────────────────────────────────
+function openRuleSetsModal() {
+  document.getElementById("rulesets-modal").classList.remove("hidden");
+  loadRuleSets();
+}
+
+function closeRuleSetsModal() {
+  document.getElementById("rulesets-modal").classList.add("hidden");
+  loadPackages(); // refresh rule-set names shown in scenario cards
+}
+
 async function loadRuleSets() {
   allRuleSets = await api("GET", "/api/admin/rulesets");
   renderRuleSets();
@@ -578,7 +605,7 @@ async function deleteRuleSet(rsId) {
   loadRuleSets();
 }
 
-// ── PACKAGES TAB ──────────────────────────────────────────────────────────────
+// ── SCENARIOS TAB (packages: topic + goal + hard constraints + rule set) ──────
 async function loadPackages() {
   const classTag = document.getElementById("pkg-class-filter").value.trim();
   const [packages, rulesets] = await Promise.all([
@@ -608,19 +635,27 @@ async function loadPackages() {
         <button class="btn btn-danger" onclick="deletePackage(${pkg.id})">Delete</button>
       </div>
       <div style="color:var(--text-muted);font-size:0.85rem;margin-top:4px">${esc(pkg.topic)}</div>
+      ${pkg.goal ? `<div style="color:var(--text-muted);font-size:0.8rem;margin-top:2px">🎯 ${esc(pkg.goal)}</div>` : ""}
       <div id="pkg-${pkg.id}" class="hidden" style="margin-top:12px">
         <div class="form-row cols-2">
-          <div><span class="field-label">Package name</span>
+          <div><span class="field-label">Scenario name</span>
                <input class="admin-input" id="pkg-name-${pkg.id}" value="${esc(pkg.name)}"></div>
-          <div><span class="field-label">Rule set</span>
-               <select class="admin-select" id="pkg-rs-${pkg.id}" style="width:100%">
-                 <option value="">None</option>
-                 ${allRuleSets.map((r) => `<option value="${r.id}" ${r.id === pkg.rule_set_id ? "selected" : ""}>${esc(r.name)}</option>`).join("")}
-               </select></div>
+          <div><span class="field-label">Rule set (ground rules)</span>
+               <div style="display:flex;gap:6px">
+                 <select class="admin-select grow" id="pkg-rs-${pkg.id}" style="width:100%">
+                   <option value="">None</option>
+                   ${allRuleSets.map((r) => `<option value="${r.id}" ${r.id === pkg.rule_set_id ? "selected" : ""}>${esc(r.name)}</option>`).join("")}
+                 </select>
+                 <button class="btn btn-secondary" onclick="openRuleSetsModal()" title="Create, edit, or delete rule sets" style="white-space:nowrap">⚙ Manage</button>
+               </div></div>
         </div>
         <div style="margin-bottom:12px">
           <span class="field-label">Topic / core question</span>
           <input class="admin-input" id="pkg-topic-${pkg.id}" value="${esc(pkg.topic)}">
+        </div>
+        <div style="margin-bottom:12px">
+          <span class="field-label">Goal <span style="font-weight:400;color:var(--text-muted)">(what a successful outcome looks like — shown to the Referee)</span></span>
+          <textarea class="admin-textarea" id="pkg-goal-${pkg.id}" style="min-height:60px">${esc(pkg.goal || "")}</textarea>
         </div>
         <div class="section-title">Hard constraints (issue-specific)</div>
         <div id="pkg-constraints-${pkg.id}"></div>
@@ -696,6 +731,7 @@ async function savePackage(pkgId) {
   await api("PUT", `/api/admin/packages/${pkgId}`, {
     name: document.getElementById(`pkg-name-${pkgId}`).value,
     topic: document.getElementById(`pkg-topic-${pkgId}`).value,
+    goal: document.getElementById(`pkg-goal-${pkgId}`).value,
     rule_set_id: rsVal ? parseInt(rsVal, 10) : null,
     constraints: getConstraints(pkgId),
     agent_prompt_template: document.getElementById(`pkg-template-${pkgId}`).value,
@@ -750,12 +786,97 @@ async function confirmLoad() {
   window.location.href = "/session";
 }
 
-// ── PROFILES TAB ─────────────────────────────────────────────────────────────
-async function loadProfiles() {
-  const classTag = document.getElementById("profiles-class-filter").value.trim();
-  const list = document.getElementById("profiles-list");
+// ── STUDENT AGENT MODAL (form answers + generated/overridden system prompt) ───
+async function openStudentAgentModal(userId, displayName, classTag) {
+  document.getElementById("sa-modal-title").textContent = `${displayName}'s agent`;
+  document.getElementById("student-agent-modal").dataset.userId = userId;
+  const body = document.getElementById("sa-modal-body");
+  body.innerHTML = '<div class="empty">Loading…</div>';
+  document.getElementById("student-agent-modal").classList.remove("hidden");
+
   if (!classTag) {
-    list.innerHTML = '<div class="empty">Select a class above to view profiles.</div>';
+    body.innerHTML = '<div class="empty">This student has no class assigned yet, so no agent-builder form applies.</div>';
+    return;
+  }
+  const profiles = await api("GET", `/api/admin/profiles?class_tag=${encodeURIComponent(classTag)}`);
+  const p = profiles.find((pr) => pr.user_id === userId);
+  if (!p) {
+    body.innerHTML = '<div class="empty">No profile data found.</div>';
+    return;
+  }
+  renderStudentAgentBody(p);
+}
+
+// Shared by the single-student modal and the all-agents bulk view.
+function _agentPanelHtml(p) {
+  const isOverridden = p.system_prompt_override !== null && p.system_prompt_override !== undefined;
+  const promptText = isOverridden ? p.system_prompt_override : (p.system_prompt || "");
+  const statusBadge = isOverridden
+    ? '<span class="badge badge-yellow">Overridden</span>'
+    : '<span class="badge badge-gray">From template</span>';
+
+  const answerEntries = Object.entries(p.answers || {});
+  const answersHtml = answerEntries.length > 0
+    ? answerEntries.map(([k, v]) =>
+        `<div style="margin-bottom:8px">
+           <div style="font-family:monospace;font-size:0.78rem;color:var(--primary);margin-bottom:2px">${esc(k)}</div>
+           <div style="font-size:0.85rem;white-space:pre-wrap">${esc(v)}</div>
+         </div>`
+      ).join("")
+    : '<span class="hint">No form answers saved yet.</span>';
+
+  const updatedText = p.last_updated
+    ? `Saved ${new Date(p.last_updated).toLocaleString()}`
+    : "Not submitted yet";
+
+  return `
+    <div class="card-row" style="margin-bottom:12px">
+      ${statusBadge}
+      <span class="hint" style="margin-left:auto">${esc(updatedText)}</span>
+    </div>
+    <div class="section-title">Form answers</div>
+    <div style="background:var(--bg);border-radius:8px;padding:12px;line-height:1.6;margin-bottom:16px">
+      ${answersHtml}
+    </div>
+    <div class="section-title">System prompt ${isOverridden ? "(override active)" : "(template-rendered)"}</div>
+    <div class="card-row" style="margin-bottom:8px">
+      <span class="hint" style="font-size:0.75rem">${p.system_prompt ? "" : "⚠ No template configured for this class."}</span>
+      <div class="spacer"></div>
+      <button class="btn btn-secondary" onclick="resetPromptOverride(${p.user_id})">Reset</button>
+      <button class="btn btn-primary" onclick="savePromptOverride(${p.user_id})">Save override</button>
+    </div>
+    <textarea class="admin-textarea" id="prompt-override-${p.user_id}"
+      style="min-height:200px;font-family:monospace;font-size:0.8rem">${esc(promptText)}</textarea>
+  `;
+}
+
+function renderStudentAgentBody(p) {
+  document.getElementById("sa-modal-body").innerHTML = _agentPanelHtml(p);
+}
+
+function closeStudentAgentModal() {
+  document.getElementById("student-agent-modal").classList.add("hidden");
+}
+
+// ── ALL AGENTS MODAL (whole-class overview: every student's answers + prompt) ─
+function openAllAgentsModal() {
+  document.getElementById("all-agents-modal").classList.remove("hidden");
+  if (document.getElementById("aa-class-filter").value.trim()) {
+    loadAllAgents();
+  } else {
+    document.getElementById("all-agents-list").innerHTML = '<div class="empty">Select a class above to view all agents.</div>';
+  }
+}
+
+function closeAllAgentsModal() {
+  document.getElementById("all-agents-modal").classList.add("hidden");
+}
+
+async function loadAllAgents() {
+  const classTag = document.getElementById("aa-class-filter").value.trim();
+  const list = document.getElementById("all-agents-list");
+  if (!classTag) {
+    list.innerHTML = '<div class="empty">Select a class above to view all agents.</div>';
     return;
   }
   const profiles = await api("GET", `/api/admin/profiles?class_tag=${encodeURIComponent(classTag)}`);
@@ -765,71 +886,44 @@ async function loadProfiles() {
     return;
   }
   profiles.forEach((p) => {
-    const isOverridden = p.system_prompt_override !== null && p.system_prompt_override !== undefined;
-    const promptText = isOverridden ? p.system_prompt_override : (p.system_prompt || "");
-    const statusBadge = isOverridden
-      ? '<span class="badge badge-yellow">Overridden</span>'
-      : '<span class="badge badge-gray">From template</span>';
-
-    const answerEntries = Object.entries(p.answers || {});
-    const answersHtml = answerEntries.length > 0
-      ? answerEntries.map(([k, v]) =>
-          `<div style="margin-bottom:8px">
-             <div style="font-family:monospace;font-size:0.78rem;color:var(--primary);margin-bottom:2px">${esc(k)}</div>
-             <div style="font-size:0.85rem;white-space:pre-wrap">${esc(v)}</div>
-           </div>`
-        ).join("")
-      : '<span class="hint">No form answers saved yet.</span>';
-
-    const updatedText = p.last_updated
-      ? `Saved ${new Date(p.last_updated).toLocaleString()}`
-      : "Not submitted yet";
-
     const card = document.createElement("div");
     card.className = "admin-card";
     card.innerHTML = `
-      <div class="card-row" style="margin-bottom:12px">
-        <div>
-          <strong>${esc(p.display_name)}</strong>
-          <span class="badge badge-blue" style="margin-left:8px">${esc(p.class_tag) || "no class"}</span>
-          <span style="margin-left:8px">${statusBadge}</span>
-        </div>
-        <span class="hint" style="margin-left:auto">${esc(updatedText)}</span>
+      <div class="card-row" style="margin-bottom:4px">
+        <strong>${esc(p.display_name)}</strong>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
-        <div>
-          <div class="section-title">Form answers</div>
-          <div style="background:var(--bg);border-radius:8px;padding:12px;line-height:1.6">
-            ${answersHtml}
-          </div>
-        </div>
-        <div>
-          <div class="section-title">System prompt ${isOverridden ? "(override active)" : "(template-rendered)"}</div>
-          <div class="card-row" style="margin-bottom:8px">
-            <span class="hint" style="font-size:0.75rem">${p.system_prompt ? "" : "⚠ No template configured for this class."}</span>
-            <div class="spacer"></div>
-            <button class="btn btn-secondary" onclick="resetPromptOverride(${p.user_id})">Reset</button>
-            <button class="btn btn-primary" onclick="savePromptOverride(${p.user_id})">Save override</button>
-          </div>
-          <textarea class="admin-textarea" id="prompt-override-${p.user_id}"
-            style="min-height:160px;font-family:monospace;font-size:0.8rem">${esc(promptText)}</textarea>
-        </div>
-      </div>
+      ${_agentPanelHtml(p)}
     `;
     list.appendChild(card);
   });
 }
 
+function _refreshAgentViews(userId) {
+  const saModal = document.getElementById("student-agent-modal");
+  if (!saModal.classList.contains("hidden") && parseInt(saModal.dataset.userId, 10) === userId) {
+    refreshStudentAgentModal(userId);
+  }
+  if (!document.getElementById("all-agents-modal").classList.contains("hidden")) {
+    loadAllAgents();
+  }
+}
+
 async function savePromptOverride(userId) {
   const text = document.getElementById(`prompt-override-${userId}`).value;
   await api("PUT", `/api/admin/profiles/${userId}/prompt`, { system_prompt_override: text });
-  loadProfiles();
+  _refreshAgentViews(userId);
 }
 
 async function resetPromptOverride(userId) {
   if (!confirm("Remove the override and revert to the template-derived prompt?")) return;
   await api("PUT", `/api/admin/profiles/${userId}/prompt`, { system_prompt_override: null });
-  loadProfiles();
+  _refreshAgentViews(userId);
+}
+
+function refreshStudentAgentModal(userId) {
+  const u = allUsers.find((x) => x.id === userId);
+  if (!u) return;
+  openStudentAgentModal(userId, u.display_name, u.class_tag);
 }
 
 // ── RUNS TAB ──────────────────────────────────────────────────────────────────
