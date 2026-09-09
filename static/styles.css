@@ -392,8 +392,13 @@ html, body {
   text-overflow: ellipsis;
 }
 
+/* Anchor the 60px face (not the whole face+name+chip column) on the position the board
+   geometry computes. Centring the column instead makes an avatar's face drift upward by half
+   its label stack, and that drift differs between avatars that carry a stance chip and those
+   that don't — which is enough to push a crowded wedge back under the 60px no-overlap floor. */
 .avatars-container.board-mode .avatar {
   z-index: 3;
+  transform: translate(-50%, -30px);
 }
 
 .avatar-name {

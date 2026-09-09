@@ -290,13 +290,41 @@ function buildAgentAvatarEl(agent, xPercent, yPercent) {
   );
 }
 
-const BOARD_LABEL_RADIUS = 46;       // percent — where option labels sit, near the rim
-const BOARD_START_RADIUS = 42;       // percent — first (outermost) avatar ring in a wedge
-const BOARD_RADIUS_STEP = 14;        // percent — each ring steps this far inward
-const BOARD_MIN_RADIUS = 14;         // percent — never place an avatar closer than this to center
-const BOARD_UNDECIDED_RADIUS = 14;   // percent — the undecided ring around the referee
-const BOARD_AVATARS_PER_RING = 3;    // avatars per ring before wrapping to the next ring inward
-const BOARD_WEDGE_ARC_SPREAD = 1.08; // radians — angular spread of avatars within one ring
+// Board geometry. All radii are percentages of the container's diameter; the container is
+// `min(55vh, 55vw)` capped at 480px (styles.css), and an avatar face is a fixed 60px circle.
+// The numbers below are derived so that every pair of avatars stays >= 60px apart (i.e. no
+// overlap) for the app's worst case — 8 agents, 6 options — on a board >= ~430px across.
+//
+// The radial budget is what makes this tight: an avatar centre can sit at most
+// (50 - 3000/D)% from the centre before the face leaves the container, which leaves room for
+// exactly three occupied radii (undecided ring, inner wedge ring, outer wedge ring), each one
+// BOARD_MIN_SEPARATION apart. A wedge therefore never stacks a third ring — there is nowhere
+// for it to go — it fans the overflow out sideways along the inner ring instead, which is safe
+// because a wedge only overflows past 6 agents when the neighbouring wedges are nearly empty.
+const BOARD_MIN_SEPARATION = 14;     // percent — target centre-to-centre gap (60px at D=429)
+const BOARD_LABEL_RADIUS = 47;       // percent — where option labels sit, outside the outer ring
+const BOARD_START_RADIUS = 42;       // percent — outer avatar ring in a wedge
+const BOARD_RADIUS_STEP = 14;        // percent — how far further in the inner ring sits
+const BOARD_MIN_RADIUS = BOARD_START_RADIUS - BOARD_RADIUS_STEP; // percent — inner (last) ring
+const BOARD_UNDECIDED_RADIUS = 14;   // percent — undecided ring floor; grows if that ring crowds
+const BOARD_AVATARS_PER_RING = 3;    // avatars in the outer ring before overflow moves inward
+const BOARD_WEDGE_ARC_SPREAD = 0.69; // radians — arc spanned by a full (3-avatar) outer ring
+const BOARD_INNER_ARC_SPREAD = 1.04; // radians — arc spanned by 3 avatars in the inner ring
+
+// Angular pitch between neighbours in a ring. Kept constant per ring (rather than stretching a
+// fixed arc across however many avatars are present) so a half-full ring spaces its avatars the
+// same way a full one does.
+const BOARD_OUTER_PITCH = BOARD_WEDGE_ARC_SPREAD / (BOARD_AVATARS_PER_RING - 1);
+const BOARD_INNER_PITCH = BOARD_INNER_ARC_SPREAD / (BOARD_AVATARS_PER_RING - 1);
+
+// Radius the undecided ring needs so that `count` avatars spread around the full circle stay
+// BOARD_MIN_SEPARATION apart. Only exceeds the floor at 7+ undecided, and 7+ undecided means the
+// wedges hold at most one agent, so growing the ring can never push it into a wedge ring.
+function undecidedRingRadius(count) {
+  if (count < 2) return BOARD_UNDECIDED_RADIUS;
+  const needed = BOARD_MIN_SEPARATION / (2 * Math.sin(Math.PI / count));
+  return Math.max(BOARD_UNDECIDED_RADIUS, needed);
+}
 
 function isBoardMode() {
   return !!(state.session && state.session.options && state.session.options.length > 0);
@@ -320,11 +348,12 @@ function computeBoardPositions(session) {
 
   const agentPositions = new Map();
 
+  const undecidedRadius = undecidedRingRadius(undecided.length);
   undecided.forEach((agent, i) => {
     const angle = (2 * Math.PI * i) / Math.max(undecided.length, 1) - Math.PI / 2;
     agentPositions.set(agent.id, {
-      x: 50 + BOARD_UNDECIDED_RADIUS * Math.cos(angle),
-      y: 50 + BOARD_UNDECIDED_RADIUS * Math.sin(angle),
+      x: 50 + undecidedRadius * Math.cos(angle),
+      y: 50 + undecidedRadius * Math.sin(angle),
     });
   });
 
@@ -332,13 +361,16 @@ function computeBoardPositions(session) {
     const theta = (2 * Math.PI * i) / n - Math.PI / 2;
     const wedgeAgents = byOption.get(opt.id);
 
+    const outerCount = Math.min(wedgeAgents.length, BOARD_AVATARS_PER_RING);
+    const innerCount = wedgeAgents.length - outerCount;
+
     wedgeAgents.forEach((agent, k) => {
-      const ring = Math.floor(k / BOARD_AVATARS_PER_RING);
-      const radius = Math.max(BOARD_START_RADIUS - ring * BOARD_RADIUS_STEP, BOARD_MIN_RADIUS);
-      const ringStart = ring * BOARD_AVATARS_PER_RING;
-      const ringCount = Math.min(BOARD_AVATARS_PER_RING, wedgeAgents.length - ringStart);
-      const posInRing = k - ringStart;
-      const angleOffset = ringCount > 1 ? (posInRing / (ringCount - 1) - 0.5) * BOARD_WEDGE_ARC_SPREAD : 0;
+      const isInner = k >= outerCount;
+      const radius = isInner ? BOARD_MIN_RADIUS : BOARD_START_RADIUS;
+      const ringCount = isInner ? innerCount : outerCount;
+      const posInRing = isInner ? k - outerCount : k;
+      const pitch = isInner ? BOARD_INNER_PITCH : BOARD_OUTER_PITCH;
+      const angleOffset = (posInRing - (ringCount - 1) / 2) * pitch;
       const angle = theta + angleOffset;
       agentPositions.set(agent.id, {
         x: 50 + radius * Math.cos(angle),
